@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/ui/BookPage.tscn" id="2_book_page"]
 
 [node name="Main" type="Control"]
 anchors_preset = 15
@@ -9,3 +10,5 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_main")
+
+[node name="BookPage" parent="." instance=ExtResource("2_book_page")]

@@ -2,14 +2,24 @@ config_version=5
 
 [application]
 
-config/name="Godot Project"
+config/name="Double Face"
 config/features=PackedStringArray("4.6", "GL Compatibility")
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/Main.tscn"
 
 [debug]
 
 file_logging/enable_file_logging=false
 file_logging/enable_file_logging.pc=false
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+
+[gui]
+
+theme/custom_font="res://assets/fonts/simkai.ttf"
 
 [rendering]
 
