@@ -20,6 +20,7 @@ window/stretch/mode="canvas_items"
 [gui]
 
 theme/custom_font="res://assets/fonts/simkai.ttf"
+theme/default_font_size=20
 
 [rendering]
 

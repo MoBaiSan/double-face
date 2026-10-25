@@ -1,7 +1,18 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://scenes/ui/BookPage.tscn" id="2_book_page"]
+[ext_resource type="PackedScene" path="res://scenes/ui/ScenePage.tscn" id="3_scene_page"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MapPage.tscn" id="4_map_page"]
+[ext_resource type="PackedScene" path="res://scenes/ui/BattlePage.tscn" id="5_battle_page"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_throat"]
+bg_color = Color(0.654902, 0.588235, 0.447059, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.266667, 0.231373, 0.172549, 1)
 
 [node name="Main" type="Control"]
 anchors_preset = 15
@@ -12,3 +23,48 @@ grow_vertical = 2
 script = ExtResource("1_main")
 
 [node name="BookPage" parent="." instance=ExtResource("2_book_page")]
+
+[node name="NarrationFrame" parent="BookPage" index="2"]
+visible = false
+
+[node name="TestOptions" parent="BookPage" index="3"]
+visible = false
+
+[node name="PageNav" parent="BookPage" index="4"]
+process_mode = 4
+visible = false
+
+[node name="Pages" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="ScenePage" parent="Pages" instance=ExtResource("3_scene_page")]
+
+[node name="MapPage" parent="Pages" instance=ExtResource("4_map_page")]
+visible = false
+
+[node name="BattlePage" parent="Pages" instance=ExtResource("5_battle_page")]
+visible = false
+
+[node name="Overlay" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="ThroatPlaceholder" type="Panel" parent="Overlay"]
+layout_mode = 1
+anchor_left = 1.0
+anchor_top = 0.18
+anchor_right = 1.0
+anchor_bottom = 0.82
+offset_left = -58.0
+offset_right = -34.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_throat")
+
+[editable path="BookPage"]
