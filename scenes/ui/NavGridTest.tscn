@@ -1,0 +1,53 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/page_nav.gd" id="1_nav"]
+
+[node name="NavGridTest" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Paper" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.909804, 0.862745, 0.752941, 1)
+
+[node name="TestGrid" type="GridContainer" parent="."]
+offset_left = 80.0
+offset_top = 120.0
+offset_right = 298.0
+offset_bottom = 338.0
+theme_override_constants/h_separation = 18
+theme_override_constants/v_separation = 18
+columns = 2
+
+[node name="CellOne" type="ColorRect" parent="TestGrid" groups=["selectable"]]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+color = Color(0.94902, 0.921569, 0.839216, 1)
+
+[node name="CellTwo" type="ColorRect" parent="TestGrid" groups=["selectable"]]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+color = Color(0.94902, 0.921569, 0.839216, 1)
+
+[node name="CellThree" type="ColorRect" parent="TestGrid" groups=["selectable"]]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+color = Color(0.94902, 0.921569, 0.839216, 1)
+
+[node name="CellFour" type="ColorRect" parent="TestGrid" groups=["selectable"]]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+color = Color(0.94902, 0.921569, 0.839216, 1)
+
+[node name="PageNav" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_nav")
+
+[connection signal="confirmed" from="PageNav" to="PageNav" method="mark_used"]
