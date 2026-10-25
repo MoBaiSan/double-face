@@ -1,0 +1,16 @@
+config_version=5
+
+[application]
+
+config/name="Godot Project"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+run/main_scene="res://scenes/main.tscn"
+
+[debug]
+
+file_logging/enable_file_logging=false
+file_logging/enable_file_logging.pc=false
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
