@@ -24,6 +24,7 @@ var _selected: Control = null
 
 class SelectionOutline extends Control:
 	const OUTLINE_PX: int = 1
+	const ACTIVE_OUTLINE_PX: int = 2
 	const DARK: Color = Color("443b2c")
 	const BRIGHT: Color = Color("fff9e5")
 	const USED_SHADE: Color = Color(0.34, 0.34, 0.34, 0.48)
@@ -39,7 +40,7 @@ class SelectionOutline extends Control:
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_border.bg_color = Color.TRANSPARENT
-		_border.set_border_width_all(OUTLINE_PX)
+		_border.anti_aliasing = false
 		resized.connect(queue_redraw)
 
 	func _draw() -> void:
@@ -48,6 +49,7 @@ class SelectionOutline extends Control:
 			draw_rect(bounds, USED_SHADE)
 		# StyleBox 的边框向内绘制，不改变候选本身的容器尺寸。
 		_border.border_color = BRIGHT if active else DARK
+		_border.set_border_width_all(ACTIVE_OUTLINE_PX if active else OUTLINE_PX)
 		draw_style_box(_border, bounds)
 		if used:
 			var start: Vector2 = Vector2(size.x - CHECK_MARGIN, size.y * 0.5)
