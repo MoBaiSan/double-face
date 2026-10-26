@@ -59,3 +59,6 @@
 - [ ] **`map_grid.gd` 已 406 行、自测内嵌约 145 行**（`:262-406`）：SP-07 接入调查后必破 400 行上限。SP-07 前必须照 SP-05 的模式拆到 `scenes/dev/` + `scripts/`。
 - [ ] **SP-05 回归命令必须写对**：`-- --sp05-self-test` 跑主场景是**零断言空跑**（自测挂在 `res://scenes/dev/SP05Test.tscn`，`scripts/sp05_test.gd:15`）；正解 `godot --headless --path <工程> res://scenes/dev/SP05Test.tscn --quit-after 200 -- --sp05-self-test`。三条回归命令应写进卡面。
 - [ ] **白点色值曾与纸面同值**：`data/map.json:15` 原为 `#f2ebd6` ＝纸面底色，点5 静止时看不见；SP-06 返工中修（恒描边 + 换浅色）。将来换美术素材重排色板时，别再让任何点位色与底色相等。
+- [ ] **点旁名字已废，改名改成左上角角标**（`72ab4bd`）：等距方格后 pitch 仅 55–58px，点旁文字会夹在两点之间并压连线（放大 5 倍才认得出，取证图 `_verif\sp06_names.png` + `sp06_names_zoom.png`）。现改为 `scenes/ui/MapPage.tscn` 的 `CurrentPointLabel`（左上 `offset 12/8`、字号 16、`#443b2c`），文本 `当前位置：<名字>`；`scripts/map_grid.gd` 内 `draw_string` 调用数已为 0。用户拍板（2026-10-26）。
+- [ ] **c1 / d1 / d2 三个点没有名字**：`data/map.json` 里它们是 `plain` 色、无名字字段，角标按 id 原文显示（`当前位置：c1`）。要不要给它们起名字属于内容设定，**等剧情/调查文字卡（SP-09、SP-11）再定**，本轮不编。
+- [ ] **角标宽度是 Label 自适应最小尺寸**（实测 248px，右边界 x=324），名字最多撑到接近 `entry_exit` 的「入口/出口」。将来名字变长（超过约 12 个全角字）会撞到最左的点（x≈490），届时需要限宽 + 换行或缩字号。
