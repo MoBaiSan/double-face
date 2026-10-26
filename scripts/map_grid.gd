@@ -274,7 +274,7 @@ func _draw_point(point_id: StringName, point: Dictionary) -> void:
 		var width: float = _float_visual("hover_outline_px") if point_id == _hovered_id else 1.0
 		draw_arc(_point_position(point_id), _float_visual("point_radius") + width,
 			0.0, TAU, 24, outline, width)
-	if point_color != "plain":
+	if point_color != "plain" and should_draw_label(point_id):
 		var font: Font = get_theme_font("font")
 		draw_string(font, _point_position(point_id) + Vector2(16.0, 6.0),
 			str(point.get("display_name", point_id)), HORIZONTAL_ALIGNMENT_LEFT, -1,
@@ -283,6 +283,10 @@ func _draw_point(point_id: StringName, point: Dictionary) -> void:
 
 func _should_draw_outline(point_id: StringName, point: Dictionary) -> bool:
 	return point_id == _current_id or point_id == _hovered_id or str(point.get("color", "plain")) == "white"
+
+## 该点是否画名字：只有当前点与待选点画。
+func should_draw_label(point_id: StringName) -> bool:
+	return point_id == _current_id or (_pending_id != &"" and point_id == _pending_id)
 
 
 func _same_ids(actual: Array[StringName], expected: Array[StringName]) -> bool:
@@ -338,6 +342,23 @@ func _run_self_test() -> void:
 	_test_hover_and_invalid_clicks()
 	_test_dead_end()
 	_test_round_trip()
+	reset_map()
+	var previous_point_id: StringName = get_current_node_id()
+	var labeled_count: int = 0
+	var labeled_id: StringName = &""
+	for point_id: StringName in _revealed.keys():
+		if should_draw_label(point_id):
+			labeled_count += 1
+			labeled_id = point_id
+	_check(labeled_count == 1 and labeled_id == previous_point_id, "only_current_labeled expected=1 actual=%d id=%s" % [labeled_count, labeled_id])
+	var moved_to_c1: bool = try_move_to(&"c1")
+	_check(moved_to_c1 and not should_draw_label(previous_point_id), "previous_point_label_off old=%s actual=%s" % [previous_point_id, should_draw_label(previous_point_id)])
+	try_move_to(&"point1")
+	try_move_to(&"point2")
+	select_direction(Vector2.DOWN)
+	var pending_label_id: StringName = _pending_id
+	_check(pending_label_id != &"" and should_draw_label(pending_label_id), "pending_point_label expected=true actual=%s" % should_draw_label(pending_label_id))
+	_check(not should_draw_label(&"c1"), "other_revealed_label expected=false actual=%s" % should_draw_label(&"c1"))
 	print("[SP-06] failures=%d" % _failures)
 	get_tree().quit(0 if _failures == 0 else 1)
 
