@@ -20,7 +20,7 @@ mouse_filter = 2
 
 [node name="MapArea" type="Panel" parent="."]
 anchor_left = 0.05
-anchor_top = 0.06
+anchor_top = 0.48
 anchor_right = 0.89
 anchor_bottom = 0.92
 mouse_filter = 2

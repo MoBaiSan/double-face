@@ -220,6 +220,21 @@ func _float_visual(name: String) -> float:
 	return float(_visual.get(name, 1.0))
 
 
+func _visible_points_inside_map_area() -> bool:
+	var map_area: Control = get_parent().get_parent() as Control
+	if map_area == null:
+		return false
+	var area_rect: Rect2 = map_area.get_global_rect()
+	var margin: float = _float_visual("point_radius") + _float_visual("hover_outline_px")
+	for point_id: StringName in _revealed.keys():
+		var center: Vector2 = get_global_transform() * _point_position(point_id)
+		if center.x - margin < area_rect.position.x or center.x + margin > area_rect.end.x:
+			return false
+		if center.y - margin < area_rect.position.y or center.y + margin > area_rect.end.y:
+			return false
+	return true
+
+
 func _draw() -> void:
 	for point_id: StringName in _points.keys():
 		var point: Dictionary = _points[point_id] as Dictionary
@@ -290,6 +305,12 @@ func _run_self_test() -> void:
 	var white_point: Dictionary = _points.get(&"point5", {}) as Dictionary
 	_check(_should_draw_outline(&"point5", white_point),
 		"white_point_outline expected=true actual=%s" % _should_draw_outline(&"point5", white_point))
+	var map_area: Control = get_parent().get_parent() as Control
+	var viewport_height: float = get_viewport_rect().size.y
+	var map_area_below: bool = map_area != null \
+		and map_area.get_global_rect().position.y >= viewport_height * 0.48 \
+		and _visible_points_inside_map_area()
+	_check(map_area_below, "map_area_below_narration expected=true actual=%s" % map_area_below)
 	_check(not is_visible_in_tree(), "hidden_map_input blocked=true")
 	_check(select_direction(Vector2.DOWN) and confirm_selection(), "keyboard_move_to_c1")
 	_check(is_equal_approx(GameState.vital_now, 99.0),
