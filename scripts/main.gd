@@ -5,8 +5,14 @@ extends Control
 const PAGE_NAMES: Array[StringName] = [&"ScenePage", &"MapPage", &"BattlePage"]
 const MAIN_SCENE_PATH: String = "res://scenes/Main.tscn"
 const SELF_TEST_ARGUMENT: String = "--sp03-self-test"
+const SP04_SELF_TEST_ARGUMENT: String = "--sp04-self-test"
+const SP04_DEMO_PREFIX: String = "--sp04-demo="
 const SELF_TEST_ROUNDS: int = 3
 const LAYOUT_WAIT_FRAMES: int = 2
+const SP04_VALUES: Array[float] = [100.0, 60.0, 30.0, 0.0]
+const SP04_BANDS: Array[StringName] = [&"full", &"low", &"critical", &"broken"]
+const SP04_EXPECTED_COLORS: Array[Color] = [
+	Color("#217a8a"), Color("#ad6b24"), Color("#b33b3b"), Color("#4c526b")]
 
 @onready var _pages_root: Control = $Pages
 @onready var _book_page: Control = $BookPage
@@ -20,6 +26,7 @@ var _current_data: Dictionary = {}
 var _failures: int = 0
 var _original_scene: Node = null
 var _main_scene_unchanged: bool = true
+var _sp04_failures: int = 0
 
 
 func _ready() -> void:
@@ -33,8 +40,33 @@ func _ready() -> void:
 	show_page(PAGE_NAMES[0])
 	print("[godot-project] ready")
 	if DisplayServer.get_name() == "headless":
-		if OS.get_cmdline_user_args().has(SELF_TEST_ARGUMENT):
+		var user_args: PackedStringArray = OS.get_cmdline_user_args()
+		_handle_sp04_demo(user_args)
+		if user_args.has(SELF_TEST_ARGUMENT):
 			call_deferred("_run_self_test")
+		if user_args.has(SP04_SELF_TEST_ARGUMENT):
+			call_deferred("_run_sp04_self_test")
+
+
+func _handle_sp04_demo(user_args: PackedStringArray) -> void:
+	for argument: String in user_args:
+		if not argument.begins_with(SP04_DEMO_PREFIX):
+			continue
+		var value_text: String = argument.trim_prefix(SP04_DEMO_PREFIX)
+		if not value_text.is_valid_float():
+			print("[SP-04] DEMO FAIL invalid value=%s" % value_text)
+			return
+		_throat_placeholder.set_value(value_text.to_float())
+		_print_sp04_demo("DEMO", _throat_placeholder)
+		return
+
+
+func _print_sp04_demo(prefix: String, bar: VitalBar) -> void:
+	var color_text: String = bar.get_state_color().to_html(false)
+	print("[SP-04] %s value=%d band=%s fill_height=%.2f color=#%s " % [
+		prefix, roundi(bar.get_value()), bar.get_band(), bar.get_fill_height(), color_text])
+	print("[SP-04] %s flash_count=%d top=%.2f vertical=%s" % [
+		prefix, bar.get_flash_count(), bar.get_fill_top(), str(bar.size.y > bar.size.x)])
 
 
 ## 显示指定常驻页并切换空数据引用；未知页返回 false 且不改变当前页。
@@ -83,6 +115,61 @@ func _turn_page(direction: int) -> void:
 		return
 	var next_index: int = posmod(current_index + direction, PAGE_NAMES.size())
 	show_page(PAGE_NAMES[next_index])
+
+
+func _run_sp04_self_test() -> void:
+	await _wait_for_layout()
+	var bar: VitalBar = _throat_placeholder
+	var initial_flash_count: int = bar.get_flash_count()
+	for index: int in range(SP04_VALUES.size()):
+		bar.set_value(SP04_VALUES[index])
+		var passed: bool = _sp04_state_matches(bar, index)
+		_print_sp04_result(passed, SP04_VALUES[index], bar)
+	var before_rise: int = bar.get_flash_count()
+	bar.set_value(10.0)
+	_sp04_check(bar.get_flash_count() == before_rise, "rise_no_flash")
+	var throat_label: Label = $Overlay/ThroatPlaceholder/ThroatText
+	var actual_text: String = throat_label.text.replace("\n", "")
+	print("[SP-04] text_read=%s" % actual_text)
+	_sp04_check(actual_text == "斑さん还能唱", "text_exact")
+	_sp04_check(bar.get_bar_rect().size == Vector2(24.0, bar.size.y), "vertical_bar_geometry")
+	_sp04_check(bar.global_position.x >= 1180.0, "left_boundary")
+	_sp04_check(initial_flash_count == 0, "normal_start_no_flash")
+	print("[SP-04] failures=%d" % _sp04_failures)
+	get_tree().quit(0 if _sp04_failures == 0 else 1)
+
+
+func _sp04_state_matches(bar: VitalBar, index: int) -> bool:
+	var expected_value: float = SP04_VALUES[index]
+	var expected_height: float = bar.size.y * expected_value / 100.0
+	var expected_top: float = bar.size.y - expected_height
+	var expected_flash_count: int = index
+	var expected_color: Color = SP04_EXPECTED_COLORS[index]
+	var actual_color: Color = bar.get_state_color()
+	var geometry_ok: bool = is_equal_approx(bar.get_fill_height(), expected_height)
+	geometry_ok = geometry_ok and is_equal_approx(bar.get_fill_top(), expected_top)
+	var flash_ok: bool = bar.get_flash_count() == expected_flash_count
+	var color_ok: bool = expected_color.is_equal_approx(actual_color)
+	print("[SP-04] color value=%d expected=#%s actual=#%s" % [
+		roundi(expected_value), expected_color.to_html(false), actual_color.to_html(false)])
+	return geometry_ok and flash_ok and color_ok and bar.get_band() == SP04_BANDS[index]
+
+
+func _print_sp04_result(passed: bool, expected_value: float, bar: VitalBar) -> void:
+	var status: String = "PASS" if passed else "FAIL"
+	print("[SP-04] %s value=%d band=%s fill_height=%.2f color=#%s flash_count=%d " % [
+		status, roundi(expected_value), bar.get_band(), bar.get_fill_height(),
+		bar.get_state_color().to_html(false), bar.get_flash_count()])
+	print("[SP-04] %s top=%.2f vertical=%s" % [
+		status, bar.get_fill_top(), str(bar.size.y > bar.size.x)])
+	if not passed:
+		_sp04_failures += 1
+
+
+func _sp04_check(passed: bool, label: String) -> void:
+	print("[SP-04] %s %s" % ["PASS" if passed else "FAIL", label])
+	if not passed:
+		_sp04_failures += 1
 
 
 func _run_self_test() -> void:
