@@ -17,6 +17,7 @@ var _step_count: int = 0
 var _grid_size: Vector2 = Vector2.ONE
 var _visual: Dictionary = {}
 var _pulse_time: float = 0.0
+var _vital_signal_count: int = 0
 var _failures: int = 0
 
 
@@ -26,6 +27,7 @@ func _ready() -> void:
 	_load_map()
 	reset_map()
 	if OS.get_cmdline_user_args().has("--sp06-self-test"):
+		GameState.vital_changed.connect(_on_test_vital_changed)
 		call_deferred("_run_self_test")
 
 
@@ -344,6 +346,8 @@ func _run_self_test() -> void:
 	_test_hover_and_invalid_clicks()
 	_test_dead_end()
 	_test_round_trip()
+	_test_balance_guards()
+	_test_epsilon_boundaries()
 	reset_map()
 	try_move_to(&"c1")
 	try_move_to(&"point1")
@@ -416,6 +420,63 @@ func _test_round_trip() -> void:
 	_check(_step_count == 12, "shortest_round_trip steps=12")
 	_check(is_equal_approx(GameState.vital_now, 88.0),
 		"shortest_round_trip_vital expected=88.000000 actual=%.6f" % GameState.vital_now)
+
+
+func _test_balance_guards() -> void:
+	GameState.set_frozen(false)
+	reset_map()
+	GameState.vital_now = GameState.vital_max
+	try_move_to(&"c1")
+	var current_before: StringName = _current_id
+	var steps_before: int = _step_count
+	GameState.vital_now = 0.0
+	var no_step: bool = not try_move_to(&"point1") and _current_id == current_before
+	no_step = no_step and _step_count == steps_before and is_zero_approx(GameState.vital_now)
+	_check(no_step, "no_step_at_zero moved=false value=0")
+	var calls_before: int = GameState.get_point_pay_call_count()
+	var point_allowed: bool = GameState.pay_point(&"required")
+	var no_point: bool = not point_allowed and is_zero_approx(GameState.vital_now)
+	no_point = no_point and GameState.get_point_pay_call_count() == calls_before + 1
+	_check(no_point, "no_point_at_zero allowed=false value=0 calls+1")
+	var step_cost: float = GameState.get_knob("step_cost")
+	reset_map()
+	GameState.vital_now = step_cost - 0.5
+	var before_insufficient: float = GameState.vital_now
+	var insufficient: bool = not try_move_to(&"c1") and _step_count == 0
+	insufficient = insufficient and is_equal_approx(GameState.vital_now, before_insufficient)
+	_check(insufficient, "no_step_when_insufficient value=%.6f" % GameState.vital_now)
+	reset_map()
+	GameState.vital_now = step_cost
+	var exact: bool = try_move_to(&"c1") and _current_id == &"c1"
+	exact = exact and is_zero_approx(GameState.vital_now)
+	_check(exact, "step_at_exact_balance moved=true value=0")
+
+
+func _test_epsilon_boundaries() -> void:
+	var maximum: float = GameState.vital_max
+	var rate: float = GameState.get_knob("time_drain_per_second")
+	var threshold: float = GameState.get_knob("drain_flush_threshold")
+	GameState.set_frozen(true)
+	GameState.set_frozen(false)
+	GameState.vital_now = maximum
+	var flush_input: float = threshold / rate + GameState.VITAL_EPSILON
+	var flushes: int = 10
+	for _index: int in range(flushes):
+		GameState.drain_time(flush_input)
+	var expected_drop: float = rate * flush_input * flushes
+	var actual_drop: float = maximum - GameState.vital_now
+	var flush_ok: bool = actual_drop > 0.0 and absf(actual_drop - expected_drop) <= GameState.VITAL_EPSILON
+	_check(flush_ok, "epsilon_flush_not_swallowed flushes=%d drop=%.6f expected=%.6f" % [flushes, actual_drop, expected_drop])
+	GameState.vital_now = maximum
+	var signal_before: int = _vital_signal_count
+	GameState.vital_now = maximum - GameState.VITAL_EPSILON * 0.5
+	var tiny_ignored: bool = is_equal_approx(GameState.vital_now, maximum)
+	tiny_ignored = tiny_ignored and _vital_signal_count == signal_before
+	_check(tiny_ignored, "epsilon_ignores_tiny_change signal_delta=0 value=%.6f" % GameState.vital_now)
+
+
+func _on_test_vital_changed(_value: float, _maximum: float, _reason: StringName) -> void:
+	_vital_signal_count += 1
 
 
 func _check(passed: bool, label: String) -> void:

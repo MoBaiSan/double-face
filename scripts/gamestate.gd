@@ -5,6 +5,7 @@ signal vital_changed(vital_now: float, vital_max: float, reason: StringName)
 signal frozen_changed(frozen: bool)
 
 const KNOBS_PATH: String = "res://data/knobs.json"
+const VITAL_EPSILON: float = 1e-6
 const REQUIRED_KIND: StringName = &"required"
 const OPTIONAL_KIND: StringName = &"optional"
 
@@ -77,6 +78,20 @@ func set_frozen(value: bool) -> void:
 	frozen_changed.emit(_frozen)
 
 
+## 进入战斗冻结并清除进入前的时间累积；战斗边界跨入时调用。
+func enter_battle() -> void:
+	if _frozen:
+		return
+	set_frozen(true)
+
+
+## 离开战斗解除冻结；战斗边界跨出时调用。
+func exit_battle() -> void:
+	if not _frozen:
+		return
+	set_frozen(false)
+
+
 ## 返回当前是否冻结；测试页和页面切换逻辑用它读取状态。
 func is_frozen() -> bool:
 	return _frozen
@@ -119,7 +134,7 @@ func get_knob(name: String) -> float:
 
 
 func _spend(amount: float, reason: StringName) -> bool:
-	if amount <= 0.0:
+	if amount <= 0.0 or _vital_now < amount:
 		return false
 	_set_vital(_vital_now - amount, reason)
 	return true
@@ -129,7 +144,7 @@ func _set_vital(value: float, reason: StringName) -> void:
 	if vital_max <= 0.0:
 		return
 	var next_value: float = clampf(value, 0.0, vital_max)
-	if is_equal_approx(next_value, _vital_now):
+	if absf(next_value - _vital_now) < VITAL_EPSILON:
 		return
 	_vital_now = next_value
 	vital_changed.emit(_vital_now, vital_max, reason)

@@ -73,12 +73,16 @@ func _print_sp04_demo(prefix: String, bar: VitalBar) -> void:
 func show_page(name: StringName) -> bool:
 	if not _pages.has(name):
 		return false
+	var was_battle: bool = _current_page == &"BattlePage"
 	if name != _current_page:
 		for page_name: StringName in PAGE_NAMES:
 			_set_page_active(_pages[page_name] as Control, page_name == name)
 	_current_page = name
 	_current_data = _page_data[name]
-	GameState.set_frozen(name == &"BattlePage")
+	if name == &"BattlePage" and not was_battle:
+		GameState.enter_battle()
+	elif was_battle and name != &"BattlePage":
+		GameState.exit_battle()
 	return true
 
 
@@ -182,6 +186,7 @@ func _run_self_test() -> void:
 	print("[SP-03] font_size default=%d option=%d" % [
 		get_theme_font_size(&"font_size", &"Label"), option_label.get_theme_font_size(&"font_size")])
 	_test_visible_pages()
+	_test_battle_freeze_boundaries()
 	await _test_fixed_paper_and_throat()
 	await _test_navigation_retention()
 	_test_unknown_page()
@@ -222,6 +227,29 @@ func _active_navigation_count() -> int:
 		if nav.is_visible_in_tree() and nav.can_process() and nav.is_processing_input():
 			count += 1
 	return count
+
+
+func _test_battle_freeze_boundaries() -> void:
+	show_page(&"ScenePage")
+	GameState.set_process(false)
+	GameState.exit_battle()
+	GameState.vital_now = GameState.vital_max
+	GameState.drain_time(0.25)
+	GameState.enter_battle()
+	var entered: bool = GameState.is_frozen() and is_zero_approx(GameState.get_drain_accum())
+	_check(entered, "freeze_on_enter_battle frozen=true accum=0")
+	show_page(&"MapPage")
+	var survived_map_switch: bool = GameState.is_frozen()
+	show_page(&"BattlePage")
+	var survived_battle_return: bool = GameState.is_frozen()
+	_check(survived_map_switch and survived_battle_return,
+		"freeze_survives_page_switch map=true battle=true")
+	GameState.exit_battle()
+	var drain_probe: float = GameState.get_knob("drain_flush_threshold") / GameState.get_knob("time_drain_per_second") * 0.5
+	GameState.drain_time(drain_probe)
+	var unfrozen_drains: bool = not GameState.is_frozen() and GameState.get_drain_accum() > 0.0
+	_check(unfrozen_drains, "unfreeze_on_exit_battle frozen=false drains=true")
+	show_page(&"ScenePage")
 
 
 func _test_fixed_paper_and_throat() -> void:
