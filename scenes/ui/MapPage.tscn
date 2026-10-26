@@ -1,6 +1,7 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="1_font"]
+[ext_resource type="Script" path="res://scripts/map_grid.gd" id="2_map_grid"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_placeholder"]
 bg_color = Color(0.94902, 0.921569, 0.839216, 1)
@@ -25,18 +26,6 @@ anchor_bottom = 0.92
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_placeholder")
 
-[node name="Label" type="Label" parent="MapArea"]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.231373, 0.192157, 0.133333, 1)
-theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 24
-text = "地图位"
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="CursorContainer" type="Control" parent="MapArea"]
 anchors_preset = 15
 anchor_right = 1.0
@@ -47,9 +36,11 @@ offset_right = -24.0
 offset_bottom = -20.0
 mouse_filter = 2
 
-[node name="Label" type="Label" parent="MapArea/CursorContainer"]
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.231373, 0.192157, 0.133333, 1)
+[node name="MapGrid" type="Control" parent="MapArea/CursorContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
 theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 24
-text = "光标容器"
+script = ExtResource("2_map_grid")

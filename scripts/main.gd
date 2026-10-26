@@ -215,9 +215,11 @@ func _test_visible_pages() -> void:
 
 func _active_navigation_count() -> int:
 	var count: int = 0
-	var background_nav: Control = $BookPage/PageNav
-	for nav: Control in [background_nav, _scene_nav]:
-		if nav.can_process() and nav.is_processing_input():
+	for candidate: Node in find_children("*", "Control", true, false):
+		var nav: Control = candidate as Control
+		if nav == null or not nav.has_method("get_candidates"):
+			continue
+		if nav.is_visible_in_tree() and nav.can_process() and nav.is_processing_input():
 			count += 1
 	return count
 

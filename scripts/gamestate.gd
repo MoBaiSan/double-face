@@ -12,6 +12,7 @@ var vital_max: float = 0.0
 var _vital_now: float = 0.0
 var _frozen: bool = false
 var _drain_accum: float = 0.0
+var _point_pay_calls: int = 0
 var _knobs: Dictionary = {}
 
 var vital_now: float:
@@ -53,6 +54,7 @@ func pay_step() -> bool:
 
 ## 扣除一次必查或可选调查费用；调查确认时传入对应类型调用。
 func pay_point(kind: StringName) -> bool:
+	_point_pay_calls += 1
 	if _frozen:
 		return false
 	var knob_name: String = ""
@@ -88,6 +90,11 @@ func on_battle_win() -> void:
 ## 读取尚未结算的时间扣除累积；冻结自检用它确认清零。
 func get_drain_accum() -> float:
 	return _drain_accum
+
+
+## 返回调查扣点入口调用次数；点阵死胡同自检用它确认没有伪调查。
+func get_point_pay_call_count() -> int:
+	return _point_pay_calls
 
 
 ## 返回向下取整的显示值；UI 更新数字标签时调用。
