@@ -46,3 +46,14 @@
 
 - [ ] codex 沙箱内 `gda` 不可用（`Errno 13` 写日志失败 / `daemon_runtime_unusable`）。现行分工：codex 写码 + headless 自检；截图由宿主侧 `tools\gda_shot.ps1` 做（每次需用户批准，规则第 9 条）。
 - [ ] `tools\gda_shot.ps1` 必须带 BOM 与 CRLF 保存，否则 PowerShell 5.1 按 ANSI 读中文会静默报语法错。
+
+## 地图（SP-06 验收挂账）
+
+- [ ] **死胡同「无文字」断言恒真**（`scripts/map_grid.gd:328`）：用 `find_children("*","Label")` 找 Label，但本页全部文字走 `draw_string`（`:257`），Label 永远为空 → 断言恒过。改成对外暴露 `get_notice_text()` 断言为空，或改判「`pay_point` 计数 + vital 不变」为主证据。
+- [ ] **`hover_unrevealed` 断言被「非邻」污染**（`scripts/map_grid.gd:304-305`）：point1 与 point5 既不邻接又未揭开，两条件同时成立，分不清哪条规则在起作用。现规则下「未揭开但相邻」不存在，注释写明该断言只作冗余保险即可。
+- [ ] **容差口径与卡不符**（`scripts/map_grid.gd:347`）：卡要求 1e-6，实现用 `is_equal_approx`（≈8.8e-4）。实值为精确 88.000000，结论不受影响。
+- [ ] **页面隐藏时仍每帧重绘**（`scripts/map_grid.gd:29-31`）：无 `is_visible_in_tree()` 守卫，全流程空转 `queue_redraw`。
+- [ ] **地图区是满页，GDD 要求「上半旁白、下半地图」**（`scenes/ui/MapPage.tscn:21-27` 锚点 0.05→0.92 近乎满页；GDD `Double_Face_GDD_序章.md:138`）。**不是 SP-06 引入**（`Main.tscn:20-21` 把 NarrationFrame 全局隐藏了）。**需用户拍板**：本卡收窄，还是等旁白卡一起定。
+- [ ] **SP-05 回归命令必须写对**：`-- --sp05-self-test` 跑主场景是**零断言空跑**（自测挂在 `res://scenes/dev/SP05Test.tscn`，`scripts/sp05_test.gd:15`）；正解 `godot --headless --path <工程> res://scenes/dev/SP05Test.tscn --quit-after 200 -- --sp05-self-test`。三条回归命令应写进卡面。
+- [ ] **`map_grid.gd` 已 354 行、自测内嵌 93 行**（`:262-354`）：SP-07 接入调查后必破 400 行上限。SP-07 前必须照 SP-05 的模式拆到 `scenes/dev/` + `scripts/`。
+- [ ] **白点色值曾与纸面同值**：`data/map.json:15` 原为 `#f2ebd6` ＝纸面底色，点5 静止时看不见；SP-06 返工中修（恒描边 + 换浅色）。将来换美术素材重排色板时，别再让任何点位色与底色相等。
