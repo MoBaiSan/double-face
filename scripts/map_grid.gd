@@ -211,10 +211,10 @@ func _hover_candidate_at(position: Vector2) -> StringName:
 func _point_position(point_id: StringName) -> Vector2:
 	var point: Dictionary = _points.get(point_id, {}) as Dictionary
 	var grid: Array = point.get("grid", [0, 0]) as Array
+	var pitch: float = min(size.x / _grid_size.x, size.y / _grid_size.y)
 	return Vector2(
-		(float(grid[0]) + 0.5) * size.x / _grid_size.x,
-		(float(grid[1]) + 0.5) * size.y / _grid_size.y)
-
+		size.x * 0.5 + (float(grid[0]) - (_grid_size.x - 1.0) * 0.5) * pitch,
+		size.y * 0.5 + (float(grid[1]) - (_grid_size.y - 1.0) * 0.5) * pitch)
 
 func _float_visual(name: String) -> float:
 	return float(_visual.get(name, 1.0))
@@ -311,6 +311,23 @@ func _run_self_test() -> void:
 		and map_area.get_global_rect().position.y >= viewport_height * 0.48 \
 		and _visible_points_inside_map_area()
 	_check(map_area_below, "map_area_below_narration expected=true actual=%s" % map_area_below)
+	var horizontal_pitch: float = abs(_point_position(&"point3").x - _point_position(&"point2").x)
+	var vertical_pitch: float = abs(_point_position(&"point6").y - _point_position(&"point2").y)
+	var pitch_delta: float = abs(horizontal_pitch - vertical_pitch)
+	_check(pitch_delta <= 0.5, "grid_square_pitch expected<=0.5 actual=%.3f" % pitch_delta)
+	var min_point: Vector2 = _point_position(&"entry_exit")
+	var max_point: Vector2 = min_point
+	for point_id: StringName in _points.keys():
+		var point_position: Vector2 = _point_position(point_id)
+		min_point.x = min(min_point.x, point_position.x)
+		min_point.y = min(min_point.y, point_position.y)
+		max_point.x = max(max_point.x, point_position.x)
+		max_point.y = max(max_point.y, point_position.y)
+	var bounds_center: Vector2 = (min_point + max_point) * 0.5
+	var map_center: Vector2 = size * 0.5
+	var center_delta: Vector2 = bounds_center - map_center
+	var centered: bool = abs(center_delta.x) <= 1.0 and abs(center_delta.y) <= 1.0
+	_check(centered, "grid_centered expected<=1 actual=(%.3f, %.3f)" % [abs(center_delta.x), abs(center_delta.y)])
 	_check(not is_visible_in_tree(), "hidden_map_input blocked=true")
 	_check(select_direction(Vector2.DOWN) and confirm_selection(), "keyboard_move_to_c1")
 	_check(is_equal_approx(GameState.vital_now, 99.0),
