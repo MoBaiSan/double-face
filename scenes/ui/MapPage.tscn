@@ -26,6 +26,17 @@ anchor_bottom = 0.92
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_placeholder")
 
+[node name="CurrentPointLabel" type="Label" parent="MapArea"]
+offset_left = 12.0
+offset_top = 8.0
+offset_right = 260.0
+offset_bottom = 32.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.266667, 0.231373, 0.172549, 1)
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 16
+text = "当前位置：入口/出口"
+
 [node name="CursorContainer" type="Control" parent="MapArea"]
 anchors_preset = 15
 anchor_right = 1.0
