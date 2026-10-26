@@ -16,15 +16,15 @@
 
 ## 交互 / 输入（SP-03 起必须做）
 
-- [ ] `_input` 全局吞键（`scripts/page_nav.gd:73-85`）：PageNav 可见且有候选时，方向键与确认键一律 `set_input_as_handled()`。一旦叠加对话框 / 设置面板会抢键 → 需引入「活动层」判断。
+- [x] ~~`_input` 全局吞键~~ **已修**（`abd304a`）：`scripts/page_nav.gd:73-85` 现在只在「可见且启用输入」时吞键，隐藏/停用后原样返回；新增断言 `hidden_nav_does_not_consume`。
 - [ ] **导航守卫是假的**（`scripts/main.gd:123-134`）：`_active_navigation_count()` 只硬编码 `$BookPage/PageNav` 与 `_scene_nav` 两个实例，配 `expected_nav_count` 断言。将来给 `MapPage`/`BattlePage` 加 PageNav，「隐藏页偷吃输入」的自查仍会 PASS。**加第二个 PageNav 的那张卡必须先把这里改成动态扫描。**
 
 ## 数值 / 状态（SP-05 起）
 
-- [ ] **`is_equal_approx` 与 flush 粒度隐式耦合**（`scripts/gamestate.gd:115` + `:39-40`）：100 点时近似相等门限是 `1e-3`，而 flush 量是 `1e-2`，只有 10 倍余量。将来 `vital_max` 调到 1000 或 flush 调到 0.001，扣点会被**静默吞掉且不报任何错**——正是卡里坑#3「取整吃掉」的变种。应改固定 epsilon（`absf(diff) < 1e-6`）。
-- [ ] **冻结位挂在 `show_page` 上**（`scripts/main.gd:81`）：任何翻页都会重设冻结位。将来用浮层进战斗、或剧情里临时冻结，一次翻页就把冻结解了。应改由战斗页自己在进出时调 `set_frozen`。
+- [x] ~~`is_equal_approx` 与 flush 粒度隐式耦合~~ **已修**（`47884e5`）：改成固定 `const VITAL_EPSILON: float = 1e-6`（`scripts/gamestate.gd:8`），与 `drain_flush_threshold` 解耦；新增断言 `epsilon_flush_not_swallowed` / `epsilon_ignores_tiny_change`。
+- [x] ~~冻结位挂在 `show_page` 上~~ **已修**（`47884e5`）：改由边界驱动——`scripts/gamestate.gd` 新增 `enter_battle()` / `exit_battle()`，`scripts/main.gd:76-85` 只在真正进出战斗页时调用；新增断言 `freeze_survives_page_switch`。
 - [ ] **`--sp04-demo=` 手测钩子已被真消耗覆盖**（`scripts/main.gd:51-61` → `scripts/vital_bar.gd:132` 连了 `vital_changed`）：设 60 之后最多 0.125 秒就被 0.08/s 弹回去，「设完停住」的手测前提不成立。后续截图验收不要再依赖它。
-- [ ] **`_process → drain_time` 接线无断言**：自查里用 `set_process(false)` 变纯同步（`scripts/sp05_test.gd:40`），因此「时间真的会自己掉」这条接线没有覆盖。应补一条「放开 `_process` 跑 N 帧、断言累积器按速率增长」的用例。
+- [x] ~~`_process → drain_time` 接线无断言~~ **已修**（`abd304a`）：`scripts/sp05_test.gd` 新增 `auto_drain_via_process`，放开 `_process` 等真实帧，期望值按旋钮速率算（`expected_drop=0.080025`，容差取 `drain_flush_threshold`）。
 - [ ] **band 阈值语义变了没钉死**：档位阈值改由旋钮 61/31/1 决定，与 SP-04 旧内联阈值 60/30 在 30.5~31 之间语义不同；SP-04 的四个采样点（0/30/60/100）恰好两边一致，把差异掩盖了。SP-21 数值定稿时必须钉死。
 - [ ] **新旋钮 `drain_flush_threshold` 不在卡面 9 个数里**（`data/knobs.json:11`）：SP-21 的旋钮清单（验收 A18）按卡面点数对表，多这一个会对不上，必须在 SP-21 登记。
 - [ ] **注释与旋钮脱钩**（`scripts/gamestate.gd:83`）：注释写死「回 10 点」，实际值来自 `battle_win_recovery`；旋钮一改注释就骗人。改成「按 battle_win_recovery 回血」。
@@ -49,16 +49,52 @@
 
 ## 地图（SP-06 验收挂账）
 
-- [ ] **死胡同「无文字」断言恒真**（`scripts/map_grid.gd:328`）：用 `find_children("*","Label")` 找 Label，但本页全部文字走 `draw_string`（`:257`），Label 永远为空 → 断言恒过。改成对外暴露 `get_notice_text()` 断言为空，或改判「`pay_point` 计数 + vital 不变」为主证据。
+- [x] ~~**死胡同「无文字」断言恒真**~~ **已修**（`abd304a`）：`scripts/map_grid.gd` 抽出 `get_drawn_labels()`，`_draw()` 与断言 `deadend_draws_no_text` 共用同一数据源，不再是「断言查 Label、绘制走 draw_string」两条路。
 - [ ] **`hover_unrevealed` 断言被「非邻」污染**（`scripts/map_grid.gd:304-305`）：point1 与 point5 既不邻接又未揭开，两条件同时成立，分不清哪条规则在起作用。现规则下「未揭开但相邻」不存在，注释写明该断言只作冗余保险即可。
 - [ ] **容差口径与卡不符**（`scripts/map_grid.gd:347`）：卡要求 1e-6，实现用 `is_equal_approx`（≈8.8e-4）。实值为精确 88.000000，结论不受影响。
 - [ ] **页面隐藏时仍每帧重绘**（`scripts/map_grid.gd:29-31`）：无 `is_visible_in_tree()` 守卫，全流程空转 `queue_redraw`。
 - [ ] **地图区起止位置与「上半旁白框缺失」**（`scenes/ui/MapPage.tscn:21-27` 锚点 0.05/0.48/0.89/0.92；GDD `Double_Face_GDD_序章.md:138` 要求「上半旁白文本框 + 下半手绘地图」）。现状：地图已收窄到下半页（`8ca67e1`），但**上半的旁白框在 MapPage 里根本不存在**（全工程只有 `BookPage.tscn:44-67` 的 NarrationFrame）。
   **用户拍板（2026-10-26）**：这一轮**不补**，等做剧情 / 调查文字卡（SP-09、SP-11）时一起放进去；在那之前地图页上半保持空白，后续卡别再重复提这件事。
 - [ ] **悬停亮只验了 id、没验颜色**（`scripts/map_grid.gd:351`）：`hover_adjacent` 只断言 `get_hovered_node_id() == &"point2"`；实测悬停前后 `#443b2c → #696256`（`hover_brightness=0.2`）没有进入断言，改暗也全绿。
-- [ ] **`map_grid.gd` 已 406 行、自测内嵌约 145 行**（`:262-406`）：SP-07 接入调查后必破 400 行上限。SP-07 前必须照 SP-05 的模式拆到 `scenes/dev/` + `scripts/`。
+- [x] ~~**`map_grid.gd` 已 406 行、自测内嵌约 145 行**~~ **已修**（`29c1ddd`）：自测搬到 `scripts/map_grid_selftest.gd`（252 行，`extends RefCounted` + `run(map)`），`scripts/map_grid.gd` 现 349 行、最长函数 25 行，断言 30 条逐字保留。
 - [ ] **SP-05 回归命令必须写对**：`-- --sp05-self-test` 跑主场景是**零断言空跑**（自测挂在 `res://scenes/dev/SP05Test.tscn`，`scripts/sp05_test.gd:15`）；正解 `godot --headless --path <工程> res://scenes/dev/SP05Test.tscn --quit-after 200 -- --sp05-self-test`。三条回归命令应写进卡面。
 - [ ] **白点色值曾与纸面同值**：`data/map.json:15` 原为 `#f2ebd6` ＝纸面底色，点5 静止时看不见；SP-06 返工中修（恒描边 + 换浅色）。将来换美术素材重排色板时，别再让任何点位色与底色相等。
 - [ ] **点旁名字已废，改名改成左上角角标**（`72ab4bd`）：等距方格后 pitch 仅 55–58px，点旁文字会夹在两点之间并压连线（放大 5 倍才认得出，取证图 `_verif\sp06_names.png` + `sp06_names_zoom.png`）。现改为 `scenes/ui/MapPage.tscn` 的 `CurrentPointLabel`（左上 `offset 12/8`、字号 16、`#443b2c`），文本 `当前位置：<名字>`；`scripts/map_grid.gd` 内 `draw_string` 调用数已为 0。用户拍板（2026-10-26）。
 - [ ] **c1 / d1 / d2 三个点没有名字**：`data/map.json` 里它们是 `plain` 色、无名字字段，角标按 id 原文显示（`当前位置：c1`）。要不要给它们起名字属于内容设定，**等剧情/调查文字卡（SP-09、SP-11）再定**，本轮不编。
 - [ ] **角标宽度是 Label 自适应最小尺寸**（实测 248px，右边界 x=324），名字最多撑到接近 `entry_exit` 的「入口/出口」。将来名字变长（超过约 12 个全角字）会撞到最左的点（x≈490），届时需要限宽 + 换行或缩字号。
+
+## 全量代码审查（2026-10-27，独立只读会话 codex-4 · gpt-6-astra/high）
+
+范围：全部脚本 + 场景 + 数据，只读不改。基线：SP-06 30 / SP-03 17 / SP-04 13 / SP-05 15 PASS，四组 failures=0、无 SCRIPT ERROR。
+
+### 已修（8 条 P1，分两批，各自过独立复审后才提交）
+
+批 A（47884e5）：
+- 嗓子为 0 仍能走 / 能查（gamestate.gd 的 _spend 不查余额）→ 余额不足即拒；新增断言 no_step_at_zero / no_point_at_zero / no_step_when_insufficient / step_at_exact_balance。
+- epsilon 与 flush 粒度耦合、冻结位挂在 show_page —— 见上文对应条目（均已标已修）。
+
+批 B（abd304a）：
+- PageNav 全局吞键、SP-05 自动扣点无断言、死胡同断言恒真 —— 见上文对应条目（均已标已修）。
+- 布局等待失败仍 exit 0（main.gd）→ 新增 --sp03-force-layout-fail；失败计入 _failures 并 quit(1)；实测 failures=1 且退出码 1。
+- 键盘断言绕过事件链（map_grid.gd）→ 改 get_viewport().push_input(InputEventKey)，按下 / 释放成对；断言 keyboard_event_pending / keyboard_event_confirm_move。
+
+规范（29c1ddd）：map_grid.gd 530 → 349 行，自测拆到 map_grid_selftest.gd（252 行），断言 30 条逐字保留。
+
+### 仍未修（P2 十条，留待 SP-07 开工前统一处理）
+
+- data/map.json:3 的 start_id 不生效：scripts/map_grid.gd:7 仍用常量 START_ID，改 JSON 没反应。
+- data/map.json 无 schema 校验：字段拼错只在运行期暴露；缺 id 时静默跳过。
+- 地图页隐藏时仍每帧 queue_redraw（scripts/map_grid.gd:29-31，无 is_visible_in_tree() 守卫）。
+- scripts/page_nav.gd 每帧全量扫描 + 排序（见「性能」段）。
+- 场景硬连 confirmed → mark_used（scenes/ui/BookPage.tscn:119、scenes/ui/NavGridTest.tscn:53）。
+- SP-04 闪光期绘制色无断言（scripts/vital_bar.gd 里 lightened(0.22) 改小仍全绿）。
+- VitalBar 文案两份真源（场景静态 text="100" 与脚本 get_display_text()）。
+- scripts/main.gd:121-123 忽略布局等待的返回值（SP-03 / SP-04 已加 force 检查，此处未检）。
+- project.godot:24-27 默认字号设置无效（见「视觉」段第 2 条）。
+- scenes/ui/MapPage.tscn:55 mouse_filter=0 + scripts/map_grid.gd 的 _gui_input 内 accept_event()：左键在整页被吞，将来叠加对话框 / 按钮会抢不到点击。
+
+### 证据口径（写给以后的卡）
+
+- 任何改动都要有「故意改坏 → 变红 → 恢复 → 变绿」的实证，否则不算验收。
+- 退出码不能当门禁：Godot 加了 --quit-after 后，脚本解析失败也 exit 0，必须数 PASS 行与 failures= 行。
+- SP-05 回归必须跑 dev 场景（见上文「SP-05 回归命令必须写对」那条）。
