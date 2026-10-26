@@ -16,7 +16,7 @@ const SP04_EXPECTED_COLORS: Array[Color] = [
 
 @onready var _pages_root: Control = $Pages
 @onready var _book_page: Control = $BookPage
-@onready var _throat_placeholder: Control = $Overlay/ThroatPlaceholder
+@onready var _throat_placeholder: VitalBar = $Overlay/ThroatPlaceholder
 @onready var _scene_nav: Control = $Pages/ScenePage/PageNav
 
 var _pages: Dictionary = {}
@@ -78,6 +78,7 @@ func show_page(name: StringName) -> bool:
 			_set_page_active(_pages[page_name] as Control, page_name == name)
 	_current_page = name
 	_current_data = _page_data[name]
+	GameState.set_frozen(name == &"BattlePage")
 	return true
 
 

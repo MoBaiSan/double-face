@@ -6,6 +6,10 @@ config/name="Double Face"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 run/main_scene="res://scenes/Main.tscn"
 
+[autoload]
+
+GameState="*res://scripts/gamestate.gd"
+
 [debug]
 
 file_logging/enable_file_logging=false

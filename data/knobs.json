@@ -1,0 +1,12 @@
+{
+  "vital_max": 100.0,
+  "time_drain_per_second": 0.08,
+  "step_cost": 1.0,
+  "required_point_cost": 6.0,
+  "optional_point_cost": 4.0,
+  "battle_win_recovery": 10.0,
+  "threshold_full": 61.0,
+  "threshold_low": 31.0,
+  "threshold_critical": 1.0,
+  "drain_flush_threshold": 0.01
+}

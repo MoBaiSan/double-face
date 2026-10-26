@@ -1,0 +1,58 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/sp05_test.gd" id="1_test"]
+[ext_resource type="PackedScene" path="res://scenes/ui/VitalBar.tscn" id="2_vital"]
+
+[node name="SP05Test" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_test")
+
+[node name="Title" type="Label" parent="."]
+offset_left = 80.0
+offset_top = 60.0
+offset_right = 600.0
+offset_bottom = 100.0
+text = "SP-05 开发测试页"
+theme_override_font_sizes/font_size = 24
+
+[node name="Value" type="Label" parent="."]
+offset_left = 80.0
+offset_top = 130.0
+offset_right = 500.0
+offset_bottom = 165.0
+text = "vital_now=100 / 100  reason=initial"
+
+[node name="Frozen" type="Label" parent="."]
+offset_left = 80.0
+offset_top = 175.0
+offset_right = 300.0
+offset_bottom = 210.0
+text = "冻结：否"
+
+[node name="Set84" type="Button" parent="."]
+offset_left = 80.0
+offset_top = 240.0
+offset_right = 240.0
+offset_bottom = 290.0
+text = "设 84"
+
+[node name="Set96" type="Button" parent="."]
+offset_left = 260.0
+offset_top = 240.0
+offset_right = 420.0
+offset_bottom = 290.0
+text = "设 96"
+
+[node name="ToggleFreeze" type="Button" parent="."]
+offset_left = 440.0
+offset_top = 240.0
+offset_right = 620.0
+offset_bottom = 290.0
+text = "冻结开关"
+
+[node name="ThroatPlaceholder" parent="." instance=ExtResource("2_vital")]
+position = Vector2(760, 100)
