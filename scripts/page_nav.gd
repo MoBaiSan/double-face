@@ -72,9 +72,12 @@ func _process(_delta: float) -> void:
 	_sync_outline_rects()
 
 
+## 仅自身在可见树且启用输入时处理并吞键；隐藏或停用时原样返回。
 func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree() or not is_processing_input():
+		return
 	_sync_candidates()
-	if not is_visible_in_tree() or _candidates.is_empty():
+	if _candidates.is_empty():
 		return
 	# 在 GUI 消费事件前统一处理，Button 等原生控件也遵守相同确认语义。
 	for action: StringName in ACTION_DIRECTIONS:

@@ -5,6 +5,7 @@ extends Control
 const PAGE_NAMES: Array[StringName] = [&"ScenePage", &"MapPage", &"BattlePage"]
 const MAIN_SCENE_PATH: String = "res://scenes/Main.tscn"
 const SELF_TEST_ARGUMENT: String = "--sp03-self-test"
+const FORCE_LAYOUT_FAIL_ARGUMENT: String = "--sp03-force-layout-fail"
 const SP04_SELF_TEST_ARGUMENT: String = "--sp04-self-test"
 const SP04_DEMO_PREFIX: String = "--sp04-demo="
 const SELF_TEST_ROUNDS: int = 3
@@ -27,6 +28,7 @@ var _failures: int = 0
 var _original_scene: Node = null
 var _main_scene_unchanged: bool = true
 var _sp04_failures: int = 0
+var _force_layout_fail: bool = false
 
 
 func _ready() -> void:
@@ -41,6 +43,7 @@ func _ready() -> void:
 	print("[godot-project] ready")
 	if DisplayServer.get_name() == "headless":
 		var user_args: PackedStringArray = OS.get_cmdline_user_args()
+		_force_layout_fail = user_args.has(FORCE_LAYOUT_FAIL_ARGUMENT)
 		_handle_sp04_demo(user_args)
 		if user_args.has(SELF_TEST_ARGUMENT):
 			call_deferred("_run_self_test")
@@ -123,7 +126,12 @@ func _turn_page(direction: int) -> void:
 
 
 func _run_sp04_self_test() -> void:
-	await _wait_for_layout()
+	if not await _wait_for_layout():
+		_sp04_failures += 1
+		print("[SP-04] FAIL wait_for_layout")
+		print("[SP-04] failures=%d" % _sp04_failures)
+		get_tree().quit(1)
+		return
 	var bar: VitalBar = _throat_placeholder
 	var initial_flash_count: int = bar.get_flash_count()
 	for index: int in range(SP04_VALUES.size()):
@@ -179,6 +187,10 @@ func _sp04_check(passed: bool, label: String) -> void:
 
 func _run_self_test() -> void:
 	if not await _wait_for_layout():
+		_failures += 1
+		print("[SP-03] FAIL wait_for_layout")
+		print("[SP-03] failures=%d" % _failures)
+		get_tree().quit(1)
 		return
 	_original_scene = get_tree().current_scene
 	_observe_main_scene()
@@ -189,6 +201,7 @@ func _run_self_test() -> void:
 	_test_battle_freeze_boundaries()
 	await _test_fixed_paper_and_throat()
 	await _test_navigation_retention()
+	_test_hidden_nav_does_not_consume()
 	_test_unknown_page()
 	_observe_main_scene()
 	var current: Node = get_tree().current_scene
@@ -200,6 +213,8 @@ func _run_self_test() -> void:
 
 
 func _wait_for_layout() -> bool:
+	if _force_layout_fail:
+		return false
 	for _frame: int in range(LAYOUT_WAIT_FRAMES):
 		if not is_inside_tree():
 			return false
@@ -250,6 +265,30 @@ func _test_battle_freeze_boundaries() -> void:
 	var unfrozen_drains: bool = not GameState.is_frozen() and GameState.get_drain_accum() > 0.0
 	_check(unfrozen_drains, "unfreeze_on_exit_battle frozen=false drains=true")
 	show_page(&"ScenePage")
+
+
+func _test_hidden_nav_does_not_consume() -> void:
+	show_page(&"BattlePage")
+	_scene_nav.set_process_input(true)
+	var hidden_event: InputEventKey = InputEventKey.new()
+	hidden_event.keycode = KEY_DOWN
+	hidden_event.pressed = true
+	get_viewport().push_input(hidden_event)
+	var hidden_handled: bool = get_viewport().is_input_handled()
+	hidden_event.pressed = false
+	get_viewport().push_input(hidden_event)
+	show_page(&"ScenePage")
+	var before: Control = _scene_nav.get_selected() as Control
+	var visible_event: InputEventKey = InputEventKey.new()
+	visible_event.keycode = KEY_DOWN
+	visible_event.pressed = true
+	get_viewport().push_input(visible_event)
+	var visible_handled: bool = get_viewport().is_input_handled()
+	var moved: bool = _scene_nav.get_selected() != before
+	visible_event.pressed = false
+	get_viewport().push_input(visible_event)
+	_check(not hidden_handled and visible_handled and moved,
+		"hidden_nav_does_not_consume hidden=false visible=true moved=true")
 
 
 func _test_fixed_paper_and_throat() -> void:

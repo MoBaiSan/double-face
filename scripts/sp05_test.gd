@@ -2,6 +2,11 @@
 extends Control
 
 var _failures: int = 0
+var _frame_delta_sum: float = 0.0
+
+
+func _process(delta: float) -> void:
+	_frame_delta_sum += delta
 
 
 func _ready() -> void:
@@ -37,6 +42,12 @@ func _on_frozen_changed(frozen: bool) -> void:
 
 
 func _run_self_test() -> void:
+	var maximum: float = GameState.vital_max
+	var rate: float = GameState.get_knob("time_drain_per_second")
+	GameState.set_process(true)
+	GameState.set_frozen(false)
+	GameState.vital_now = maximum
+	await _test_auto_drain(maximum, rate)
 	GameState.set_process(false)
 	GameState.set_frozen(true)
 	var reset_accum: float = GameState.get_drain_accum()
@@ -44,8 +55,6 @@ func _run_self_test() -> void:
 	if absf(reset_accum) > 0.000001:
 		_failures += 1
 	GameState.set_frozen(false)
-	var maximum: float = GameState.vital_max
-	var rate: float = GameState.get_knob("time_drain_per_second")
 	GameState.vital_now = maximum
 	for _second: int in range(125):
 		GameState.drain_time(1.0)
@@ -56,6 +65,21 @@ func _run_self_test() -> void:
 	_test_display_floor(maximum)
 	print("[SP-05] failures=%d" % _failures)
 	get_tree().quit(0 if _failures == 0 else 1)
+
+
+## 等待真实帧并验证 GameState._process 的自动接线；容差取未 flush 的旋钮阈值。
+func _test_auto_drain(maximum: float, rate: float) -> void:
+	_frame_delta_sum = 0.0
+	while _frame_delta_sum < 1.0:
+		await get_tree().process_frame
+	var expected_drop: float = rate * _frame_delta_sum
+	var actual_drop: float = maximum - GameState.vital_now
+	var tolerance: float = GameState.get_knob("drain_flush_threshold")
+	var passed: bool = actual_drop > 0.0 and absf(actual_drop - expected_drop) <= tolerance
+	print("[SP-05] auto_drain_via_process elapsed=%.6f expected_drop=%.6f actual_drop=%.6f tolerance=%.6f %s" % [
+		_frame_delta_sum, expected_drop, actual_drop, tolerance, "PASS" if passed else "FAIL"])
+	if not passed:
+		_failures += 1
 
 
 func _test_independent_costs(maximum: float) -> void:
