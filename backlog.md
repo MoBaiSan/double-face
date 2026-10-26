@@ -53,7 +53,9 @@
 - [ ] **`hover_unrevealed` 断言被「非邻」污染**（`scripts/map_grid.gd:304-305`）：point1 与 point5 既不邻接又未揭开，两条件同时成立，分不清哪条规则在起作用。现规则下「未揭开但相邻」不存在，注释写明该断言只作冗余保险即可。
 - [ ] **容差口径与卡不符**（`scripts/map_grid.gd:347`）：卡要求 1e-6，实现用 `is_equal_approx`（≈8.8e-4）。实值为精确 88.000000，结论不受影响。
 - [ ] **页面隐藏时仍每帧重绘**（`scripts/map_grid.gd:29-31`）：无 `is_visible_in_tree()` 守卫，全流程空转 `queue_redraw`。
-- [ ] **地图区是满页，GDD 要求「上半旁白、下半地图」**（`scenes/ui/MapPage.tscn:21-27` 锚点 0.05→0.92 近乎满页；GDD `Double_Face_GDD_序章.md:138`）。**不是 SP-06 引入**（`Main.tscn:20-21` 把 NarrationFrame 全局隐藏了）。**需用户拍板**：本卡收窄，还是等旁白卡一起定。
+- [ ] **地图区起止位置与「上半旁白框缺失」**（`scenes/ui/MapPage.tscn:21-27` 锚点 0.05/0.48/0.89/0.92；GDD `Double_Face_GDD_序章.md:138` 要求「上半旁白文本框 + 下半手绘地图」）。现状：地图已收窄到下半页（`8ca67e1`），但**上半的旁白框在 MapPage 里根本不存在**（全工程只有 `BookPage.tscn:44-67` 的 NarrationFrame）。
+  **用户拍板（2026-10-26）**：这一轮**不补**，等做剧情 / 调查文字卡（SP-09、SP-11）时一起放进去；在那之前地图页上半保持空白，后续卡别再重复提这件事。
+- [ ] **悬停亮只验了 id、没验颜色**（`scripts/map_grid.gd:351`）：`hover_adjacent` 只断言 `get_hovered_node_id() == &"point2"`；实测悬停前后 `#443b2c → #696256`（`hover_brightness=0.2`）没有进入断言，改暗也全绿。
+- [ ] **`map_grid.gd` 已 406 行、自测内嵌约 145 行**（`:262-406`）：SP-07 接入调查后必破 400 行上限。SP-07 前必须照 SP-05 的模式拆到 `scenes/dev/` + `scripts/`。
 - [ ] **SP-05 回归命令必须写对**：`-- --sp05-self-test` 跑主场景是**零断言空跑**（自测挂在 `res://scenes/dev/SP05Test.tscn`，`scripts/sp05_test.gd:15`）；正解 `godot --headless --path <工程> res://scenes/dev/SP05Test.tscn --quit-after 200 -- --sp05-self-test`。三条回归命令应写进卡面。
-- [ ] **`map_grid.gd` 已 354 行、自测内嵌 93 行**（`:262-354`）：SP-07 接入调查后必破 400 行上限。SP-07 前必须照 SP-05 的模式拆到 `scenes/dev/` + `scripts/`。
 - [ ] **白点色值曾与纸面同值**：`data/map.json:15` 原为 `#f2ebd6` ＝纸面底色，点5 静止时看不见；SP-06 返工中修（恒描边 + 换浅色）。将来换美术素材重排色板时，别再让任何点位色与底色相等。
