@@ -16,7 +16,7 @@ const LOW_COLOR: Color = Color("#ad6b24")
 const CRITICAL_COLOR: Color = Color("#b33b3b")
 ## GDD §3.2「断」：0 点歌声停；本卡让空槽体/边框保持可见。
 const BROKEN_COLOR: Color = Color("#4c526b")
-const THROAT_TEXT: String = "斑さん还能唱"
+const THROAT_TEXT: String = "斑\nさ\nん\n还\n能\n唱"
 
 var _value: float = 0.0
 var _max_value: float = 0.0
@@ -123,8 +123,11 @@ func get_bar_rect() -> Rect2:
 	return Rect2(BAR_OFFSET_X, 0.0, BAR_WIDTH, size.y)
 
 
-func get_text_content() -> String:
+func get_vertical_text() -> String:
 	return THROAT_TEXT
+
+func get_text_content() -> String:
+	return THROAT_TEXT.replace("\n", "")
 
 
 func get_display_text() -> String:

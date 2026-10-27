@@ -140,6 +140,8 @@ func _run_sp04_self_test() -> void:
 	var expected_text: String = "斑さん还能唱"
 	_sp04_check(actual_text == expected_text, "text_exact")
 	_sp04_check(bar.get_text_content() == expected_text, "text_single_source")
+	_sp04_check(throat_label.text == bar.get_vertical_text(), "text_vertical_layout")
+	_sp04_check(throat_label.text.count("\n") == 5, "text_vertical_layout")
 	_sp04_check(bar.get_bar_rect().size == Vector2(24.0, bar.size.y), "vertical_bar_geometry")
 	_sp04_check(bar.global_position.x >= 1180.0, "left_boundary")
 	_sp04_check(initial_flash_count == 0, "normal_start_no_flash")
