@@ -98,3 +98,44 @@
 - 任何改动都要有「故意改坏 → 变红 → 恢复 → 变绿」的实证，否则不算验收。
 - 退出码不能当门禁：Godot 加了 --quit-after 后，脚本解析失败也 exit 0，必须数 PASS 行与 failures= 行。
 - SP-05 回归必须跑 dev 场景（见上文「SP-05 回归命令必须写对」那条）。
+
+---
+
+## 第四组：5 条「结构地雷」清完（2026-10-27 · commit 0e8a667）
+
+上面「仍未修（P2 十条）」整段已被批 C / 批 D / 第四组三轮吃掉，逐条状态如下（终态以本条为准）：
+
+| # | 问题 | 终态 |
+|---|---|---|
+| 1 | `data/map.json` 的 `start_id` 不生效 | 已修：`scripts/map_grid.gd:155` 加载时用 `_resolve_start_id(raw_map)`；无效/缺失回落 `entry_exit` 并 `push_warning`（`:167-177`），不再整图判死 |
+| 2 | 地图数据无结构校验 | 已修：`scripts/map_data.gd:19-96` 校验必填键 / 网格正值 / id 唯一 / 坐标边界 / 边端点 / 颜色枚举；失败即拒绝进入可玩 |
+| 3 | 地图页隐藏仍每帧 `queue_redraw` | 已修（批 C） |
+| 4 | `page_nav` 每帧全量扫描 | 已修（批 C，改 node_added/removed 增量） |
+| 5 | 场景硬连 `confirmed → mark_used` | 已修（批 D：删掉两条 connection，改由 `main.gd` 的 `_on_page_nav_confirmed` 决定） |
+| 6 | SP-04 闪光期绘制色无断言 | 已修（批 D：`get_draw_color()` + `expected_draw_color` 断言） |
+| 7 | VitalBar 文案两份真源 | 已修（批 D：`THROAT_TEXT` 单一真源 + `get_text_content()`；竖排由 `text_vertical_layout` 断言守住） |
+| 8 | 布局等待失败不记 FAIL | 已修：失败记 FAIL 并走 `quit(1)`（`main.gd:123-129`），新增 `layout_wait_failure_recorded` |
+| 9 | `project.godot:24-27` 默认字号无效 | 已修（批 D：删掉无效的 `theme/default_font_size`，观感未变） |
+| 10 | 地图页左键被整页吞掉 | 已修：`MapPage.tscn:55` `mouse_filter=1`(PASS) + `map_grid.gd:21` `MOUSE_FILTER_PASS`，只在命中点位时 `accept_event()`（`:116-121`） |
+
+### 本轮新增的两条「点击穿透」断言（此前的判据是错的）
+
+- 旧判据 `blank_click_not_consumed` 断言 `get_viewport().is_input_handled() == false`：**永远不可能通过**——地图框下面压着铺满全屏的 `BookPage/Paper`（`mouse_filter=STOP`），点击漏下去就该被纸接住。
+- 新判据（已实现并通过）：
+  - `blank_click_passes_through`：空白处注入左键 → 下层 `gui_input` 计数器 +1 且地图状态不变；
+  - `point_click_consumed`：点位中心注入左键 → 下层计数器不变（被地图吃掉）且光标确实移动了。
+- 变异实证：删掉 `accept_event()` → `point_click_consumed` 变红；空白处也 accept → `blank_click_passes_through` 变红。
+
+### 自检基线（第四组后）
+
+| 组 | PASS | failures |
+|---|---|---|
+| SP-06 | 42 | 0 |
+| SP-03 | 19 | 0 |
+| SP-04 | 16 | 0 |
+| SP-05 | 15 | 0 |
+
+### 剩下的已知风险（不挡事，记录在案）
+
+- `scripts/main.gd` 364 行、`scripts/map_grid.gd` 346 行：离 400 行上限只差三十来行，下次加功能前先拆。
+- `_resolve_start_id` 的回落常量写死 `entry_exit`：将来若某张图没有入口点，仍会判不可玩（会 `push_error`，不会静默）。
