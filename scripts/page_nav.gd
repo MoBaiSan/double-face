@@ -63,13 +63,37 @@ func _ready() -> void:
 		push_error("PageNav 的候选范围不存在。")
 		set_process(false)
 		return
+	get_tree().node_added.connect(_on_node_added)
 	get_tree().node_removed.connect(_on_node_removed)
+	visibility_changed.connect(_on_visibility_changed)
+	resized.connect(_on_layout_changed)
 	_sync_candidates()
 
 
-func _process(_delta: float) -> void:
-	_sync_candidates()
+func _on_visibility_changed() -> void:
+	if is_visible_in_tree():
+		refresh_candidates()
+
+
+func _on_layout_changed() -> void:
 	_sync_outline_rects()
+
+
+func refresh_candidates() -> void:
+	if not is_visible_in_tree():
+		return
+	_sync_candidates()
+
+
+func _on_node_added(node: Node) -> void:
+	if node is Control and _scope != null and _scope.is_ancestor_of(node):
+		_connect_visibility(node as Control)
+	refresh_candidates()
+
+
+func _on_candidate_visibility_changed(_node: Node) -> void:
+	if is_visible_in_tree():
+		refresh_candidates()
 
 
 ## 仅自身在可见树且启用输入时处理并吞键；隐藏或停用时原样返回。
@@ -172,6 +196,7 @@ func _sync_candidates() -> void:
 	var fresh: Array[Control] = []
 	for node: Node in get_tree().get_nodes_in_group(SELECTABLE_GROUP):
 		if node is Control and _is_eligible(node as Control):
+			_connect_visibility(node as Control)
 			fresh.append(node as Control)
 	fresh.sort_custom(_comes_before)
 	if fresh == _candidates:
@@ -184,6 +209,10 @@ func _sync_candidates() -> void:
 			_add_outline(node)
 	for identity: int in _outlines.keys():
 		if not fresh_ids.has(identity):
+			var outline: SelectionOutline = _outlines[identity] as SelectionOutline
+			var candidate: Control = outline.candidate.get_ref() as Control if outline != null else null
+			if is_instance_valid(candidate) and not candidate.is_queued_for_deletion() and _scope.is_ancestor_of(candidate):
+				continue
 			_release_outline(identity)
 	if not is_instance_valid(_selected) or not _candidates.has(_selected):
 		_selected = _candidates[0] if not _candidates.is_empty() else null
@@ -201,6 +230,14 @@ func _add_outline(node: Control) -> void:
 		node.mouse_entered.connect(_on_hover.bind(node))
 	if not node.gui_input.is_connected(_on_candidate_input.bind(node)):
 		node.gui_input.connect(_on_candidate_input.bind(node))
+	if not node.resized.is_connected(_on_layout_changed):
+		node.resized.connect(_on_layout_changed)
+
+
+func _connect_visibility(node: Control) -> void:
+	var callback: Callable = _on_candidate_visibility_changed.bind(node)
+	if not node.visibility_changed.is_connected(callback):
+		node.visibility_changed.connect(callback)
 
 
 func _release_outline(identity: int) -> void:
@@ -220,6 +257,11 @@ func _disconnect_candidate(node: Control) -> void:
 		node.mouse_entered.disconnect(hover)
 	if node.gui_input.is_connected(clicked):
 		node.gui_input.disconnect(clicked)
+	if node.resized.is_connected(_on_layout_changed):
+		node.resized.disconnect(_on_layout_changed)
+	var visibility: Callable = _on_candidate_visibility_changed.bind(node)
+	if node.visibility_changed.is_connected(visibility):
+		node.visibility_changed.disconnect(visibility)
 
 
 func _refresh_outlines() -> void:
@@ -270,6 +312,8 @@ func _on_candidate_input(event: InputEvent, node: Control) -> void:
 
 func _on_node_removed(node: Node) -> void:
 	_used_ids.erase(node.get_instance_id())
+	if node.is_in_group(SELECTABLE_GROUP):
+		refresh_candidates()
 
 
 func _comes_before(first: Control, second: Control) -> bool:

@@ -4,13 +4,15 @@ extends Control
 signal moved(from_id: StringName, to_id: StringName, step_count: int)
 
 const MAP_PATH: String = "res://data/map.json"
-const START_ID: StringName = &"entry_exit"
+const MAP_DATA_SCRIPT = preload("res://scripts/map_data.gd")
 
 @onready var _current_point_label: Label = get_node("../../CurrentPointLabel")
 
 var _points: Dictionary = {}
+var _start_id: StringName = &""
+var _playable: bool = false
 var _revealed: Dictionary = {}
-var _current_id: StringName = START_ID
+var _current_id: StringName = &""
 var _pending_id: StringName = &""
 var _hovered_id: StringName = &""
 var _step_count: int = 0
@@ -22,6 +24,8 @@ var _pulse_time: float = 0.0
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_exited.connect(_on_mouse_exited)
+	visibility_changed.connect(_on_visibility_changed)
+	_sync_visibility_processing()
 	_load_map()
 	reset_map()
 	if OS.get_cmdline_user_args().has("--sp06-self-test"):
@@ -33,15 +37,33 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+func _on_visibility_changed() -> void:
+	_sync_visibility_processing()
+
+
+func _sync_visibility_processing() -> void:
+	var active: bool = is_visible_in_tree()
+	set_process(active)
+	set_process_unhandled_input(active)
+
+
 ## 将光标恢复到入口并建立初始两点揭开集合；进入里侧时调用。
 func reset_map() -> void:
-	_current_id = StringName(_points.get(START_ID, {}).get("id", START_ID))
+	if not _playable:
+		_current_id = &""
+		_pending_id = &""
+		_hovered_id = &""
+		_revealed.clear()
+		_refresh_current_point_label()
+		queue_redraw()
+		return
+	_current_id = _start_id
 	_pending_id = &""
 	_hovered_id = &""
 	_step_count = 0
 	_revealed.clear()
-	_revealed[START_ID] = true
-	_reveal_neighbors(START_ID)
+	_revealed[_start_id] = true
+	_reveal_neighbors(_start_id)
 	_refresh_current_point_label()
 	queue_redraw()
 
@@ -118,8 +140,10 @@ func _gui_input(event: InputEvent) -> void:
 	if button == null or not button.pressed or button.button_index != MOUSE_BUTTON_LEFT:
 		return
 	var clicked_id: StringName = _hover_candidate_at(button.position)
-	if clicked_id != &"":
-		try_move_to(clicked_id)
+	if clicked_id == &"":
+		return
+	_hovered_id = clicked_id
+	try_move_to(clicked_id)
 	accept_event()
 
 
@@ -156,16 +180,21 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _load_map() -> void:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(MAP_PATH))
 	if not parsed is Dictionary:
-		push_error("SP-06 地图数据无法解析：%s" % MAP_PATH)
+		push_error("SP-06 map data parse failed: %s" % MAP_PATH)
+		_playable = false
 		return
-	_grid_size = Vector2(parsed.get("grid_size", [1, 1])[0], parsed.get("grid_size", [1, 1])[1])
-	_visual = parsed.get("visual", {}) as Dictionary
-	_points.clear()
-	for point_variant: Variant in parsed.get("points", []):
-		var point: Dictionary = point_variant as Dictionary
-		var point_id: StringName = StringName(str(point.get("id", "")))
-		_points[point_id] = point
-
+	var data = MAP_DATA_SCRIPT.from_dictionary(parsed as Dictionary)
+	if data == null:
+		_playable = false
+		_points.clear()
+		return
+	_grid_size = Vector2(data.grid_size)
+	_start_id = data.start_id
+	_visual = data.visual
+	_points = data.points.duplicate(true)
+	_playable = _points.has(_start_id)
+	if not _playable:
+		push_error("SP-06 map is unplayable: start_id=%s" % _start_id)
 
 func _reveal_neighbors(node_id: StringName) -> void:
 	_revealed[node_id] = true
@@ -278,6 +307,10 @@ func set_hover_for_test(position: Vector2) -> void:
 	_hovered_id = _hover_candidate_at(position)
 
 
+func is_map_click_target_for_test(position: Vector2) -> bool:
+	return _hover_candidate_at(position) != &""
+
+
 ## 判断当前可见点的包围圆是否完整落在地图区内。
 func visible_points_inside_map_area() -> bool:
 	return _visible_points_inside_map_area()
@@ -321,7 +354,7 @@ func _draw_point(point_id: StringName, point: Dictionary) -> void:
 		"white":
 			color = Color(str(_visual.get("white_color", "#f2ebd6")))
 	var pulse: float = 0.0
-	if point_id == START_ID:
+	if point_id == _start_id:
 		pulse = (sin(_pulse_time / _float_visual("blue_pulse_period") * TAU) + 1.0) * 0.5
 		color.a = lerpf(1.0 - _float_visual("blue_pulse_amplitude"), 1.0, pulse)
 	if point_id == _hovered_id:
@@ -334,6 +367,13 @@ func _draw_point(point_id: StringName, point: Dictionary) -> void:
 			0.0, TAU, 24, outline, width)
 func _should_draw_outline(point_id: StringName, point: Dictionary) -> bool:
 	return point_id == _current_id or point_id == _hovered_id or str(point.get("color", "plain")) == "white"
+
+func get_start_id_for_test() -> StringName:
+	return _start_id
+
+
+func is_playable_for_test() -> bool:
+	return _playable
 
 func _same_ids(actual: Array[StringName], expected: Array[StringName]) -> bool:
 	if actual.size() != expected.size():

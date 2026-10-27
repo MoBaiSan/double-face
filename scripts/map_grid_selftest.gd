@@ -3,6 +3,7 @@ extends RefCounted
 var _map: Node
 var _failures: int = 0
 var _vital_signal_count: int = 0
+const MAP_DATA_SCRIPT = preload("res://scripts/map_data.gd")
 
 
 ## 在显式自测参数下加载拆分后的断言模块，并把失败数映射为进程退出码。
@@ -11,6 +12,7 @@ func run(map: Node) -> int:
 	if not GameState.vital_changed.is_connected(_on_test_vital_changed):
 		GameState.vital_changed.connect(_on_test_vital_changed)
 	_prepare_map_state()
+	_test_task_guards()
 	_test_initial_layout_and_input()
 	_test_hover_and_invalid_clicks()
 	_test_dead_end()
@@ -28,6 +30,48 @@ func _prepare_map_state() -> void:
 	GameState.set_frozen(false)
 	GameState.vital_now = GameState.vital_max
 	_map.reset_map()
+
+
+func _test_task_guards() -> void:
+	_check(_map.is_playable_for_test() and _map.get_start_id_for_test() == &"entry_exit",
+		"C1 start_id_loaded playable=true")
+	var base: Dictionary = {"grid_size": [2, 2], "start_id": "a", "points": [{"id": "a", "display_name": "a", "grid": [0, 0], "color": "plain", "surveyable": false, "survey_kind": "none", "edges": []}]}
+	var missing: Dictionary = base.duplicate(true)
+	missing.erase("start_id")
+	_check(not MAP_DATA_SCRIPT.validate_dictionary(missing), "C2 missing_required rejected=true")
+	var duplicate: Dictionary = base.duplicate(true)
+	duplicate["points"].append((base["points"] as Array)[0].duplicate(true))
+	_check(not MAP_DATA_SCRIPT.validate_dictionary(duplicate), "C2 duplicate_id rejected=true")
+	var out_of_bounds: Dictionary = base.duplicate(true)
+	(out_of_bounds["points"] as Array)[0]["grid"] = [2, 0]
+	_check(not MAP_DATA_SCRIPT.validate_dictionary(out_of_bounds), "C2 grid_bounds rejected=true")
+	var map_page: Control = _map.get_parent().get_parent().get_parent() as Control
+	var was_visible: bool = map_page.visible
+	map_page.visible = true
+	_check(_map.is_processing() and _map.is_processing_unhandled_input(), "C3 visible_processing enabled=true")
+	map_page.visible = false
+	_check(not _map.is_processing() and not _map.is_processing_unhandled_input(), "C3 hidden_processing disabled=true")
+	map_page.visible = was_visible
+	var scene_page: Control = map_page.get_parent().get_node("ScenePage") as Control
+	var nav: Control = scene_page.get_node("PageNav") as Control
+	var before: int = nav.get_candidates().size()
+	var temp := Control.new()
+	temp.add_to_group("selectable")
+	scene_page.add_child(temp)
+	nav.refresh_candidates()
+	var added: int = nav.get_candidates().size()
+	temp.visible = false
+	nav.refresh_candidates()
+	var hidden: int = nav.get_candidates().size()
+	temp.free()
+	nav.refresh_candidates()
+	_check(added == before + 1 and hidden == before,
+		"C4 on_demand_refresh node_visibility=true before=%d added=%d hidden=%d processing=%s" % [before, added, hidden, nav.is_processing()])
+	_map.reset_map()
+	var blank: Vector2 = Vector2.ZERO
+	var target: Vector2 = _map.get_point_position_for_test(&"c1")
+	_check(not _map.is_map_click_target_for_test(blank) and _map.is_map_click_target_for_test(target),
+		"C5 click_hit_only revealed_adjacent=true")
 
 
 func _test_initial_layout_and_input() -> void:
