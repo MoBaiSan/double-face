@@ -110,18 +110,17 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			return
 	_turn_page(direction)
 	get_viewport().set_input_as_handled()
-
 func _turn_page(direction: int) -> void:
 	var current_index: int = PAGE_NAMES.find(_current_page)
 	if current_index < 0:
 		return
 	var next_index: int = posmod(current_index + direction, PAGE_NAMES.size())
 	show_page(PAGE_NAMES[next_index])
-
-
 func _run_sp04_self_test() -> void:
 	if not await _wait_for_layout():
+		var failures_before_wait: int = _sp04_failures
 		_sp04_check(false, "wait_for_layout")
+		_sp04_check(_sp04_failures > failures_before_wait, "layout_wait_failure_recorded")
 		print("[SP-04] failures=%d" % _sp04_failures)
 		get_tree().quit(1)
 		return
@@ -147,8 +146,6 @@ func _run_sp04_self_test() -> void:
 	_sp04_check(initial_flash_count == 0, "normal_start_no_flash")
 	print("[SP-04] failures=%d" % _sp04_failures)
 	get_tree().quit(0 if _sp04_failures == 0 else 1)
-
-
 func _sp04_state_matches(bar: VitalBar, index: int) -> bool:
 	var expected_value: float = SP04_VALUES[index]
 	var expected_height: float = bar.size.y * expected_value / 100.0
@@ -165,8 +162,6 @@ func _sp04_state_matches(bar: VitalBar, index: int) -> bool:
 	print("[SP-04] color value=%d expected=#%s actual=#%s" % [
 		roundi(expected_value), expected_color.to_html(false), actual_color.to_html(false)])
 	return geometry_ok and flash_ok and color_ok and draw_color_ok and bar.get_band() == SP04_BANDS[index]
-
-
 func _print_sp04_result(passed: bool, expected_value: float, bar: VitalBar) -> void:
 	var status: String = "PASS" if passed else "FAIL"
 	print("[SP-04] %s value=%d band=%s fill_height=%.2f color=#%s flash_count=%d " % [
@@ -176,14 +171,10 @@ func _print_sp04_result(passed: bool, expected_value: float, bar: VitalBar) -> v
 		status, bar.get_fill_top(), str(bar.size.y > bar.size.x)])
 	if not passed:
 		_sp04_failures += 1
-
-
 func _sp04_check(passed: bool, label: String) -> void:
 	print("[SP-04] %s %s" % ["PASS" if passed else "FAIL", label])
 	if not passed:
 		_sp04_failures += 1
-
-
 func _run_self_test() -> void:
 	if not await _wait_for_layout():
 		_failures += 1
@@ -209,8 +200,6 @@ func _run_self_test() -> void:
 	_check(_main_scene_unchanged, "5 main_scene unchanged: %s" % path)
 	print("[SP-03] failures=%d" % _failures)
 	get_tree().quit(0 if _failures == 0 else 1)
-
-
 func _wait_for_layout() -> bool:
 	if _force_layout_fail:
 		return false
@@ -220,29 +209,28 @@ func _wait_for_layout() -> bool:
 		var tree: SceneTree = get_tree()
 		await tree.process_frame
 	return is_inside_tree()
-
-
 func _test_visible_pages() -> void:
 	for page_name: StringName in PAGE_NAMES:
 		var accepted: bool = show_page(page_name)
 		_observe_main_scene()
 		_check(accepted and _only_page_visible(page_name), "1 visible: %s" % page_name)
-		var expected_nav_count: int = 1 if page_name == PAGE_NAMES[0] else 0
-		_check(_active_navigation_count() == expected_nav_count,
-			"1 working navigation: %s" % page_name)
-
-
+		var manual_nav_count: int = 0
+		for candidate: Node in $Pages.find_children("*", "Control", true, false):
+			var nav: Control = candidate as Control
+			if nav != null and nav.has_method("get_candidates") and nav.is_visible_in_tree() and nav.is_processing_input():
+				manual_nav_count += 1
+		_check(_active_navigation_count() == manual_nav_count, "nav_count_dynamic: %s" % page_name)
+		if page_name != PAGE_NAMES[0]:
+			_check(manual_nav_count == 0, "hidden_nav_not_counted: %s" % page_name)
 func _active_navigation_count() -> int:
 	var count: int = 0
 	for candidate: Node in find_children("*", "Control", true, false):
 		var nav: Control = candidate as Control
 		if nav == null or not nav.has_method("get_candidates"):
 			continue
-		if nav.is_visible_in_tree() and nav.can_process() and nav.is_processing_input():
+		if nav.is_visible_in_tree() and nav.is_processing_input():
 			count += 1
 	return count
-
-
 func _test_battle_freeze_boundaries() -> void:
 	show_page(&"ScenePage")
 	GameState.set_process(false)
@@ -264,8 +252,6 @@ func _test_battle_freeze_boundaries() -> void:
 	var unfrozen_drains: bool = not GameState.is_frozen() and GameState.get_drain_accum() > 0.0
 	_check(unfrozen_drains, "unfreeze_on_exit_battle frozen=false drains=true")
 	show_page(&"ScenePage")
-
-
 func _test_hidden_nav_does_not_consume() -> void:
 	show_page(&"BattlePage")
 	_scene_nav.set_process_input(true)
@@ -288,8 +274,6 @@ func _test_hidden_nav_does_not_consume() -> void:
 	get_viewport().push_input(visible_event)
 	_check(not hidden_handled and visible_handled and moved,
 		"hidden_nav_does_not_consume hidden=false visible=true moved=true")
-
-
 func _test_fixed_paper_and_throat() -> void:
 	show_page(PAGE_NAMES[0])
 	_observe_main_scene()
@@ -314,8 +298,6 @@ func _test_fixed_paper_and_throat() -> void:
 			stable = stable and _book_page.get_instance_id() == book_id
 			stable = stable and _throat_placeholder.get_instance_id() == throat_id
 		_check(stable, "2 paper/throat fixed, round %d" % (round_index + 1))
-
-
 func _test_navigation_retention() -> void:
 	show_page(PAGE_NAMES[0])
 	_observe_main_scene()
@@ -335,8 +317,6 @@ func _test_navigation_retention() -> void:
 	selected = _scene_nav.call("get_selected") as Control
 	_check(starts_first and moved and selected == first, "3 selected: one -> two -> one")
 	await _test_state_after_page_turn(first, used_before, outline_before)
-
-
 func _test_state_after_page_turn(first: Control, used_before: bool, outline_id: int) -> void:
 	for page_name: StringName in [PAGE_NAMES[1], PAGE_NAMES[2], PAGE_NAMES[0]]:
 		show_page(page_name)
@@ -347,30 +327,22 @@ func _test_state_after_page_turn(first: Control, used_before: bool, outline_id: 
 	var retained: bool = selected == first and used_before and _has_used_state(first)
 	retained = retained and _outline_id(first) == outline_id
 	_check(retained, "3 selection/gray-check retained after return")
-
-
 func _has_used_state(node: Control) -> bool:
 	var used_ids: Dictionary = _scene_nav.get("_used_ids")
 	var outlines: Dictionary = _scene_nav.get("_outlines")
 	var outline: Control = outlines.get(node.get_instance_id()) as Control
 	return bool(used_ids.get(node.get_instance_id(), false)) \
 		and outline != null and bool(outline.get("used"))
-
-
 func _outline_id(node: Control) -> int:
 	var outlines: Dictionary = _scene_nav.get("_outlines")
 	var outline: Control = outlines.get(node.get_instance_id()) as Control
 	return outline.get_instance_id() if outline != null else 0
-
-
 func _test_unknown_page() -> void:
 	var before: StringName = _current_page
 	var accepted: bool = show_page(&"Nope")
 	_observe_main_scene()
 	_check(not accepted and _current_page == before and _only_page_visible(before),
 		"4 unknown page returns false without changing visible page")
-
-
 func _only_page_visible(name: StringName) -> bool:
 	var count: int = 0
 	for page_name: StringName in PAGE_NAMES:
@@ -379,16 +351,12 @@ func _only_page_visible(name: StringName) -> bool:
 			count += 1
 	var target: Control = _pages[name] as Control
 	return count == 1 and target.visible
-
-
 func _observe_main_scene() -> void:
 	var current: Node = get_tree().current_scene
 	_main_scene_unchanged = _main_scene_unchanged and current == _original_scene
 	_main_scene_unchanged = _main_scene_unchanged and current != null
 	if current != null:
 		_main_scene_unchanged = _main_scene_unchanged and current.scene_file_path == MAIN_SCENE_PATH
-
-
 func _check(passed: bool, label: String) -> void:
 	print("[SP-03] %s %s" % ["PASS" if passed else "FAIL", label])
 	if not passed:

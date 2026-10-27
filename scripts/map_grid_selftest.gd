@@ -3,6 +3,7 @@ extends RefCounted
 var _map: Node
 var _failures: int = 0
 var _vital_signal_count: int = 0
+var _lower_press_count: int = 0
 const MAP_DATA_SCRIPT = preload("res://scripts/map_data.gd")
 
 
@@ -13,6 +14,7 @@ func run(map: Node) -> int:
 		GameState.vital_changed.connect(_on_test_vital_changed)
 	_prepare_map_state()
 	_test_task_guards()
+	_test_mouse_event_path()
 	_test_initial_layout_and_input()
 	_test_hover_and_invalid_clicks()
 	_test_dead_end()
@@ -33,24 +35,34 @@ func _prepare_map_state() -> void:
 
 
 func _test_task_guards() -> void:
-	_check(_map.is_playable_for_test() and _map.get_start_id_for_test() == &"entry_exit",
-		"C1 start_id_loaded playable=true")
+	_check(_map.mouse_filter != Control.MOUSE_FILTER_STOP, "mouse_filter_not_stop actual=%d" % _map.mouse_filter)
+	var source_map: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/map.json"))
+	var point2_map: Dictionary = source_map.duplicate(true)
+	point2_map["start_id"] = "point2"
+	var point2_loaded: bool = _map.load_map_for_test(point2_map)
+	_check(point2_loaded and _map.get_current_node_id() == &"point2", "start_from_json current=point2")
+	var fallback_map: Dictionary = source_map.duplicate(true)
+	fallback_map.erase("start_id")
+	var fallback_loaded: bool = _map.load_map_for_test(fallback_map)
+	_check(fallback_loaded and _map.is_playable_for_test() and _map.get_current_node_id() == &"entry_exit" and _map.did_start_fallback_for_test(), "start_id_fallback playable=true current=entry_exit warning=true")
+	fallback_map["start_id"] = "missing_point"
+	var invalid_loaded: bool = _map.load_map_for_test(fallback_map)
+	_check(invalid_loaded and _map.get_current_node_id() == &"entry_exit" and _map.did_start_fallback_for_test(), "start_id_fallback invalid=entry_exit")
+	_map.load_map_for_test(source_map)
 	var base: Dictionary = {"grid_size": [2, 2], "start_id": "a", "points": [{"id": "a", "display_name": "a", "grid": [0, 0], "color": "plain", "surveyable": false, "survey_kind": "none", "edges": []}]}
-	var missing: Dictionary = base.duplicate(true)
-	missing.erase("start_id")
-	_check(not MAP_DATA_SCRIPT.validate_dictionary(missing), "C2 missing_required rejected=true")
+	_check(MAP_DATA_SCRIPT.validate_dictionary(base), "map_schema_ok valid=true")
 	var duplicate: Dictionary = base.duplicate(true)
 	duplicate["points"].append((base["points"] as Array)[0].duplicate(true))
-	_check(not MAP_DATA_SCRIPT.validate_dictionary(duplicate), "C2 duplicate_id rejected=true")
+	_check(not MAP_DATA_SCRIPT.validate_dictionary(duplicate), "map_schema_reject_duplicate_id rejected=true")
 	var out_of_bounds: Dictionary = base.duplicate(true)
 	(out_of_bounds["points"] as Array)[0]["grid"] = [2, 0]
-	_check(not MAP_DATA_SCRIPT.validate_dictionary(out_of_bounds), "C2 grid_bounds rejected=true")
+	_check(not MAP_DATA_SCRIPT.validate_dictionary(out_of_bounds), "map_schema_reject_out_of_grid rejected=true")
 	var map_page: Control = _map.get_parent().get_parent().get_parent() as Control
 	var was_visible: bool = map_page.visible
 	map_page.visible = true
-	_check(_map.is_processing() and _map.is_processing_unhandled_input(), "C3 visible_processing enabled=true")
+	_check(_map.is_processing() and _map.is_processing_unhandled_input(), "visible_processing enabled=true")
 	map_page.visible = false
-	_check(not _map.is_processing() and not _map.is_processing_unhandled_input(), "C3 hidden_processing disabled=true")
+	_check(not _map.is_processing() and not _map.is_processing_unhandled_input(), "hidden_processing disabled=true")
 	map_page.visible = was_visible
 	var scene_page: Control = map_page.get_parent().get_node("ScenePage") as Control
 	var nav: Control = scene_page.get_node("PageNav") as Control
@@ -65,16 +77,55 @@ func _test_task_guards() -> void:
 	var hidden: int = nav.get_candidates().size()
 	temp.free()
 	nav.refresh_candidates()
-	_check(added == before + 1 and hidden == before,
-		"C4 on_demand_refresh node_visibility=true before=%d added=%d hidden=%d processing=%s" % [before, added, hidden, nav.is_processing()])
+	_check(added == before + 1 and hidden == before, "nav_refresh_on_visibility=true before=%d added=%d hidden=%d" % [before, added, hidden])
+
+
+## 监听父级真实 GUI 信号；不更改过滤器，也不直接调用输入处理函数。
+func _test_mouse_event_path() -> void:
+	var map_page: Control = _map.get_node("../../..") as Control
+	var scene_page: Control = map_page.get_parent().get_node("ScenePage") as Control
+	var receiver: Control = _map.get_node("/root/Main") as Control
+	var previous_map_visible: bool = map_page.visible
+	var previous_scene_visible: bool = scene_page.visible
+	map_page.visible = true
+	scene_page.visible = false
 	_map.reset_map()
-	var blank: Vector2 = Vector2.ZERO
-	var target: Vector2 = _map.get_point_position_for_test(&"c1")
-	_check(not _map.is_map_click_target_for_test(blank) and _map.is_map_click_target_for_test(target),
-		"C5 click_hit_only revealed_adjacent=true")
+	GameState.vital_now = GameState.vital_max
+	receiver.gui_input.connect(_on_lower_gui_input)
+	_lower_press_count = 0
+	var current_before: StringName = _map.get_current_node_id()
+	var steps_before: int = _map.get_step_count()
+	_push_mouse_click(Vector2(5.0, 5.0))
+	var unchanged: bool = _map.get_current_node_id() == current_before and _map.get_step_count() == steps_before
+	_check(_lower_press_count == 1 and unchanged,
+		"blank_click_passes_through lower_presses=%d state_unchanged=%s" % [_lower_press_count, unchanged])
+	_lower_press_count = 0
+	_push_mouse_click(_map.get_point_position_for_test(&"c1"))
+	var moved: bool = _map.get_current_node_id() == &"c1" and _map.get_step_count() == steps_before + 1
+	_check(_lower_press_count == 0 and moved,
+		"point_click_consumed lower_presses=%d moved=%s" % [_lower_press_count, moved])
+	receiver.gui_input.disconnect(_on_lower_gui_input)
+	map_page.visible = previous_map_visible
+	scene_page.visible = previous_scene_visible
+
+
+func _push_mouse_click(local_position: Vector2) -> void:
+	for pressed: bool in [true, false]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = pressed
+		event.position = _map.get_global_transform_with_canvas() * local_position
+		_map.get_viewport().push_input(event, true)
+
+
+func _on_lower_gui_input(event: InputEvent) -> void:
+	var button := event as InputEventMouseButton
+	if button != null and button.button_index == MOUSE_BUTTON_LEFT and button.pressed:
+		_lower_press_count += 1
 
 
 func _test_initial_layout_and_input() -> void:
+	_map.reset_map()
 	var revealed: Array[StringName] = _map.get_revealed_ids()
 	_check(_same_ids(revealed, [&"c1", &"entry_exit"]),
 		"initial_visible expected=2 actual=%d" % revealed.size())
