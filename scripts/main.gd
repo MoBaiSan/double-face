@@ -1,7 +1,6 @@
 ## 常驻书页的组装与翻页入口；由 Main 持有，复用既有 PageNav。
 ## 不创建剧情、地图或战斗数据，自查仅在无头且显式传参时执行。
 extends Control
-
 const PAGE_NAMES: Array[StringName] = [&"ScenePage", &"MapPage", &"BattlePage"]
 const MAIN_SCENE_PATH: String = "res://scenes/Main.tscn"
 const SELF_TEST_ARGUMENT: String = "--sp03-self-test"
@@ -14,12 +13,10 @@ const SP04_VALUES: Array[float] = [100.0, 60.0, 30.0, 0.0]
 const SP04_BANDS: Array[StringName] = [&"full", &"low", &"critical", &"broken"]
 const SP04_EXPECTED_COLORS: Array[Color] = [
 	Color("#217a8a"), Color("#ad6b24"), Color("#b33b3b"), Color("#4c526b")]
-
 @onready var _pages_root: Control = $Pages
 @onready var _book_page: Control = $BookPage
 @onready var _throat_placeholder: VitalBar = $Overlay/ThroatPlaceholder
 @onready var _scene_nav: Control = $Pages/ScenePage/PageNav
-
 var _pages: Dictionary = {}
 var _page_data: Dictionary = {}
 var _current_page: StringName = &""
@@ -29,8 +26,6 @@ var _original_scene: Node = null
 var _main_scene_unchanged: bool = true
 var _sp04_failures: int = 0
 var _force_layout_fail: bool = false
-
-
 func _ready() -> void:
 	for page_name: StringName in PAGE_NAMES:
 		var page: Control = _pages_root.get_node_or_null(NodePath(page_name)) as Control
@@ -39,6 +34,9 @@ func _ready() -> void:
 			return
 		_pages[page_name] = page
 		_page_data[page_name] = {}
+	_connect_page_nav(_book_page)
+	for page_name: StringName in PAGE_NAMES:
+		_connect_page_nav(_pages[page_name] as Control)
 	show_page(PAGE_NAMES[0])
 	print("[godot-project] ready")
 	if DisplayServer.get_name() == "headless":
@@ -49,8 +47,13 @@ func _ready() -> void:
 			call_deferred("_run_self_test")
 		if user_args.has(SP04_SELF_TEST_ARGUMENT):
 			call_deferred("_run_sp04_self_test")
-
-
+func _connect_page_nav(page: Control) -> void:
+	var nav: Control = page.get_node_or_null("PageNav") as Control
+	if nav != null and nav.has_signal("confirmed"):
+		nav.confirmed.connect(_on_page_nav_confirmed.bind(nav))
+func _on_page_nav_confirmed(node: Control, nav: Control) -> void:
+	if nav.has_method("mark_used"):
+		nav.mark_used(node)
 func _handle_sp04_demo(user_args: PackedStringArray) -> void:
 	for argument: String in user_args:
 		if not argument.begins_with(SP04_DEMO_PREFIX):
@@ -62,16 +65,12 @@ func _handle_sp04_demo(user_args: PackedStringArray) -> void:
 		_throat_placeholder.set_value(value_text.to_float())
 		_print_sp04_demo("DEMO", _throat_placeholder)
 		return
-
-
 func _print_sp04_demo(prefix: String, bar: VitalBar) -> void:
 	var color_text: String = bar.get_state_color().to_html(false)
 	print("[SP-04] %s value=%d band=%s fill_height=%.2f color=#%s " % [
 		prefix, roundi(bar.get_value()), bar.get_band(), bar.get_fill_height(), color_text])
 	print("[SP-04] %s flash_count=%d top=%.2f vertical=%s" % [
 		prefix, bar.get_flash_count(), bar.get_fill_top(), str(bar.size.y > bar.size.x)])
-
-
 ## 显示指定常驻页并切换空数据引用；未知页返回 false 且不改变当前页。
 func show_page(name: StringName) -> bool:
 	if not _pages.has(name):
@@ -87,11 +86,9 @@ func show_page(name: StringName) -> bool:
 	elif was_battle and name != &"BattlePage":
 		GameState.exit_battle()
 	return true
-
-
+## 必须先暂停再隐藏，否则既有导航的逐帧同步会丢掉当前候选。
 func _set_page_active(page: Control, active: bool) -> void:
 	var nav: Control = page.get_node_or_null("PageNav") as Control
-	# 必须先暂停再隐藏，否则既有导航的逐帧同步会丢掉当前候选。
 	if nav != null and not active:
 		nav.set_process(false)
 		nav.set_process_input(false)
@@ -99,8 +96,6 @@ func _set_page_active(page: Control, active: bool) -> void:
 	if nav != null and active:
 		nav.set_process(true)
 		nav.set_process_input(true)
-
-
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key: InputEventKey = event as InputEventKey
 	if key == null or not key.pressed or key.echo:
@@ -116,7 +111,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	_turn_page(direction)
 	get_viewport().set_input_as_handled()
 
-
 func _turn_page(direction: int) -> void:
 	var current_index: int = PAGE_NAMES.find(_current_page)
 	if current_index < 0:
@@ -127,8 +121,7 @@ func _turn_page(direction: int) -> void:
 
 func _run_sp04_self_test() -> void:
 	if not await _wait_for_layout():
-		_sp04_failures += 1
-		print("[SP-04] FAIL wait_for_layout")
+		_sp04_check(false, "wait_for_layout")
 		print("[SP-04] failures=%d" % _sp04_failures)
 		get_tree().quit(1)
 		return
@@ -144,7 +137,9 @@ func _run_sp04_self_test() -> void:
 	var throat_label: Label = $Overlay/ThroatPlaceholder/ThroatText
 	var actual_text: String = throat_label.text.replace("\n", "")
 	print("[SP-04] text_read=%s" % actual_text)
-	_sp04_check(actual_text == "斑さん还能唱", "text_exact")
+	var expected_text: String = "斑さん还能唱"
+	_sp04_check(actual_text == expected_text, "text_exact")
+	_sp04_check(bar.get_text_content() == expected_text, "text_single_source")
 	_sp04_check(bar.get_bar_rect().size == Vector2(24.0, bar.size.y), "vertical_bar_geometry")
 	_sp04_check(bar.global_position.x >= 1180.0, "left_boundary")
 	_sp04_check(initial_flash_count == 0, "normal_start_no_flash")
@@ -163,9 +158,11 @@ func _sp04_state_matches(bar: VitalBar, index: int) -> bool:
 	geometry_ok = geometry_ok and is_equal_approx(bar.get_fill_top(), expected_top)
 	var flash_ok: bool = bar.get_flash_count() == expected_flash_count
 	var color_ok: bool = expected_color.is_equal_approx(actual_color)
+	var expected_draw_color: Color = expected_color.lightened(0.22) if expected_flash_count > 0 else expected_color
+	var draw_color_ok: bool = expected_draw_color.is_equal_approx(bar.get_draw_color())
 	print("[SP-04] color value=%d expected=#%s actual=#%s" % [
 		roundi(expected_value), expected_color.to_html(false), actual_color.to_html(false)])
-	return geometry_ok and flash_ok and color_ok and bar.get_band() == SP04_BANDS[index]
+	return geometry_ok and flash_ok and color_ok and draw_color_ok and bar.get_band() == SP04_BANDS[index]
 
 
 func _print_sp04_result(passed: bool, expected_value: float, bar: VitalBar) -> void:

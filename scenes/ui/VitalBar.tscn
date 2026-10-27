@@ -17,7 +17,7 @@ offset_right = 24.0
 offset_bottom = 278.0
 theme_override_colors/font_color = Color(0.266667, 0.231373, 0.172549, 1)
 theme_override_font_sizes/font_size = 13
-text = "斑\nさ\nん\n还\n能\n唱"
+text = ""
 horizontal_alignment = 1
 vertical_alignment = 1
 

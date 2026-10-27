@@ -36,6 +36,9 @@ var value: float:
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var throat_label: Label = get_node_or_null("ThroatText") as Label
+	if throat_label != null:
+		throat_label.text = THROAT_TEXT
 	_bind_state()
 	set_process(false)
 	queue_redraw()
@@ -94,6 +97,10 @@ func get_state_color() -> Color:
 			return FULL_COLOR
 
 
+func get_draw_color() -> Color:
+	return get_state_color().lightened(0.22) if is_flash_active() else get_state_color()
+
+
 func get_fill_height() -> float:
 	if _max_value <= 0.0:
 		return 0.0
@@ -144,7 +151,7 @@ func _on_state_vital_changed(value: float, _maximum: float, _reason: StringName)
 func _draw() -> void:
 	var bar_rect: Rect2 = get_bar_rect()
 	var state_color: Color = get_state_color()
-	var draw_color: Color = state_color.lightened(0.22) if is_flash_active() else state_color
+	var draw_color: Color = get_draw_color()
 	draw_rect(bar_rect, Color("#d3c7ae"))
 	if is_zero_approx(_value):
 		draw_rect(bar_rect.grow(-1.0), Color(draw_color, 0.28))
