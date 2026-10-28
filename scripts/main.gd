@@ -27,6 +27,7 @@ var _original_scene: Node = null
 var _main_scene_unchanged: bool = true
 var _sp04_failures: int = 0
 var _force_layout_fail: bool = false
+var _dialogue: Control
 func _ready() -> void:
 	for page_name: StringName in PAGE_NAMES:
 		var page: Control = _pages_root.get_node_or_null(NodePath(page_name)) as Control
@@ -40,6 +41,7 @@ func _ready() -> void:
 		_connect_page_nav(_pages[page_name] as Control)
 	_page_switch_bar.configure(show_page)
 	show_page(PAGE_NAMES[0])
+	_setup_dialogue()
 	print("[godot-project] ready")
 	if DisplayServer.get_name() == "headless":
 		var user_args: PackedStringArray = OS.get_cmdline_user_args()
@@ -369,4 +371,21 @@ func _check(passed: bool, label: String) -> void:
 
 func _run_sp07_self_test() -> void:
 	var failures: int = await preload("res://scripts/sp07_selftest.gd").new().run(self)
+	get_tree().quit(0 if failures == 0 else 1)
+
+func _setup_dialogue() -> void:
+	_dialogue = preload("res://scenes/ui/DialogueBox.tscn").instantiate()
+	$Overlay.add_child(_dialogue)
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	var component_test: bool = false
+	for argument: String in args:
+		if argument in ["--sp03-self-test", "--sp04-self-test", "--sp05-self-test", "--sp06-self-test", "--sp07-self-test"]:
+			component_test = true
+	if not component_test:
+		_dialogue.bind_s0(_pages[&"ScenePage"], show_page)
+	if DisplayServer.get_name() == "headless" and args.has("--sp11-self-test"):
+		call_deferred("_run_sp11_self_test")
+
+func _run_sp11_self_test() -> void:
+	var failures: int = await preload("res://scripts/sp11_selftest.gd").new().run(self, _dialogue)
 	get_tree().quit(0 if failures == 0 else 1)

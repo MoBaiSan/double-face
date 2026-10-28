@@ -1,0 +1,65 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue.gd" id="1_dialogue"]
+[ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_paper"]
+bg_color = Color(0.94902, 0.921569, 0.839216, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.654902, 0.588235, 0.447059, 1)
+
+[node name="DialogueBox" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_dialogue")
+
+[node name="Panel" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchor_left = 0.05
+anchor_top = 0.06
+anchor_right = 0.89
+anchor_bottom = 0.42
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_paper")
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
+
+[node name="TextLayout" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Speaker" type="Label" parent="Panel/Margin/TextLayout"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.266667, 0.231373, 0.172549, 1)
+
+[node name="Body" type="RichTextLabel" parent="Panel/Margin/TextLayout"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_fonts/normal_font = ExtResource("2_font")
+theme_override_font_sizes/normal_font_size = 24
+theme_override_colors/default_color = Color(0.266667, 0.231373, 0.172549, 1)
+theme_override_constants/line_separation = 6
+bbcode_enabled = false
+autowrap_mode = 3
+scroll_following = true
