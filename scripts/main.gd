@@ -48,7 +48,10 @@ func _ready() -> void:
 		if user_args.has(SELF_TEST_ARGUMENT):
 			call_deferred("_run_self_test")
 		if user_args.has(SP04_SELF_TEST_ARGUMENT):
+			GameState.set_process(false)
 			call_deferred("_run_sp04_self_test")
+		if user_args.has("--sp07-self-test"):
+			call_deferred("_run_sp07_self_test")
 func _connect_page_nav(page: Control) -> void:
 	var nav: Control = page.get_node_or_null("PageNav") as Control
 	if nav != null and nav.has_signal("confirmed"):
@@ -332,11 +335,8 @@ func _test_state_after_page_turn(first: Control, used_before: bool, outline_id: 
 	retained = retained and _outline_id(first) == outline_id
 	_check(retained, "3 selection/gray-check retained after return")
 func _has_used_state(node: Control) -> bool:
-	var used_ids: Dictionary = _scene_nav.get("_used_ids")
-	var outlines: Dictionary = _scene_nav.get("_outlines")
-	var outline: Control = outlines.get(node.get_instance_id()) as Control
-	return bool(used_ids.get(node.get_instance_id(), false)) \
-		and outline != null and bool(outline.get("used"))
+	var interaction = _scene_nav.get_interactable(node)
+	return interaction != null and interaction.read
 func _outline_id(node: Control) -> int:
 	var outlines: Dictionary = _scene_nav.get("_outlines")
 	var outline: Control = outlines.get(node.get_instance_id()) as Control
@@ -366,3 +366,7 @@ func _check(passed: bool, label: String) -> void:
 	if not passed:
 		_failures += 1
 		push_error("SP-03 自查失败：%s" % label)
+
+func _run_sp07_self_test() -> void:
+	var failures: int = await preload("res://scripts/sp07_selftest.gd").new().run(self)
+	get_tree().quit(0 if failures == 0 else 1)

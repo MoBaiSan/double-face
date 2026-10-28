@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="1_font"]
 [ext_resource type="Script" path="res://scripts/page_nav.gd" id="2_nav"]
+[ext_resource type="Script" path="res://scripts/book_reading.gd" id="3_reading"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_narration"]
 bg_color = Color(0.94902, 0.921569, 0.839216, 1)
@@ -15,6 +16,8 @@ border_color = Color(0.654902, 0.588235, 0.447059, 1)
 bg_color = Color(0.94902, 0.921569, 0.839216, 1)
 
 [node name="BookPage" type="Control"]
+script = ExtResource("3_reading")
+metadata/story_phase = "S0"
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -92,6 +95,8 @@ text = "选项一"
 vertical_alignment = 1
 
 [node name="OptionTwo" type="Panel" parent="TestOptions" groups=["selectable"]]
+metadata/progression = true
+metadata/interaction_id = "s0_old_speaker"
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_option")

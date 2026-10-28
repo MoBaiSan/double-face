@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/ui/ScenePage.tscn" id="1_page"]
+
+[node name="S6Page" instance=ExtResource("1_page")]
+metadata/story_phase = "S6"
+
+[node name="OptionOne" parent="TestOptions" index="0"]
+metadata/progression = true
+metadata/interaction_id = "s6_sofa"
+
+[node name="OptionTwo" parent="TestOptions" index="1"]
+metadata/progression = true
+metadata/interaction_id = "s6_door"
+
+[editable path="TestOptions"]

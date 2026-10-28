@@ -1,4 +1,4 @@
-## 里侧点阵的显示与移动；调查业务由后续卡接入。
+## 里侧点阵的显示与移动；调查使用书页共用的交互组件。
 extends Control
 signal moved(from_id: StringName, to_id: StringName, step_count: int)
 const MAP_PATH: String = "res://data/map.json"
@@ -17,12 +17,14 @@ var _visual: Dictionary = {}
 var _pulse_time: float = 0.0
 var _last_gui_input_consumed: bool = false
 var _start_fallback_warning: bool = false
+var _interactions: RefCounted
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
 	mouse_exited.connect(_on_mouse_exited)
 	visibility_changed.connect(_on_visibility_changed)
 	_sync_visibility_processing()
 	_load_map()
+	_interactions = preload("res://scripts/map_interactions.gd").new(self)
 	reset_map()
 	if OS.get_cmdline_user_args().has("--sp06-self-test"):
 		call_deferred("_run_self_test")
@@ -52,6 +54,8 @@ func reset_map() -> void:
 	_revealed.clear()
 	_revealed[_start_id] = true
 	_reveal_neighbors(_start_id)
+	if _interactions != null:
+		_interactions.reset()
 	_refresh_current_point_label()
 	queue_redraw()
 ## 尝试移动到指定相邻点；鼠标点击和确认键都只通过此入口。
@@ -91,7 +95,7 @@ func get_hovered_node_id() -> StringName:
 ## 返回当前确认候选；没有候选时确认静默失败。
 func confirm_selection() -> bool:
 	if _pending_id == &"":
-		return false
+		return _interactions.confirm_current() if _interactions != null else false
 	return try_move_to(_pending_id)
 ## 根据屏幕方向选择一个相邻候选，不在此处扣步费。
 func select_direction(direction: Vector2) -> bool:
@@ -106,12 +110,17 @@ func _gui_input(event: InputEvent) -> void:
 	var motion: InputEventMouseMotion = event as InputEventMouseMotion
 	if motion != null:
 		_hovered_id = _hover_candidate_at(motion.position)
+		_interactions.hover_at(motion.position)
 		queue_redraw()
 		return
 	var button: InputEventMouseButton = event as InputEventMouseButton
 	if button == null or not button.pressed or button.button_index != MOUSE_BUTTON_LEFT:
 		return
 	_last_gui_input_consumed = false
+	if _interactions.click_current(button.position):
+		_last_gui_input_consumed = true
+		accept_event()
+		return
 	var clicked_id: StringName = _hover_candidate_at(button.position)
 	if clicked_id == &"":
 		return
@@ -121,6 +130,7 @@ func _gui_input(event: InputEvent) -> void:
 	accept_event()
 func _on_mouse_exited() -> void:
 	_hovered_id = &""
+	_interactions.hover_at(Vector2(-100.0, -100.0))
 	queue_redraw()
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
@@ -285,8 +295,7 @@ func _draw() -> void:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(str(_visual.get("label_color", "#443b2c"))))
 ## 返回地图绘制路径会画的点旁文字；当前名字由 CurrentPointLabel 角标负责。
 func get_drawn_labels() -> Array[Dictionary]:
-	var labels: Array[Dictionary] = []
-	return labels
+	return _interactions.get_labels() if _interactions != null else []
 func _draw_point(point_id: StringName, point: Dictionary) -> void:
 	var point_color: String = str(point.get("color", "plain"))
 	var color: Color = Color(str(_visual.get("plain_color", "#9b8f78")))
@@ -301,10 +310,10 @@ func _draw_point(point_id: StringName, point: Dictionary) -> void:
 	if point_id == _start_id:
 		pulse = (sin(_pulse_time / _float_visual("blue_pulse_period") * TAU) + 1.0) * 0.5
 		color.a = lerpf(1.0 - _float_visual("blue_pulse_amplitude"), 1.0, pulse)
-	if point_id == _hovered_id:
+	if point_id == _hovered_id and not bool(point.get("surveyable", false)):
 		color = color.lightened(_float_visual("hover_brightness"))
 	draw_circle(_point_position(point_id), _float_visual("point_radius"), color)
-	if _should_draw_outline(point_id, point):
+	if not bool(point.get("surveyable", false)) and _should_draw_outline(point_id, point):
 		var outline: Color = Color(str(_visual.get("label_color", "#443b2c")))
 		var width: float = _float_visual("hover_outline_px") if point_id == _hovered_id else 1.0
 		draw_arc(_point_position(point_id), _float_visual("point_radius") + width,
@@ -344,3 +353,6 @@ func _same_ids(actual: Array[StringName], expected: Array[StringName]) -> bool:
 func _run_self_test() -> void:
 	var failures: int = preload("res://scripts/map_grid_selftest.gd").new().run(self)
 	get_tree().quit(0 if failures == 0 else 1)
+
+func get_interactable(point_id: StringName) -> Control:
+	return _interactions.get_interactable(point_id) if _interactions != null else null

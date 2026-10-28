@@ -1,8 +1,9 @@
 ## 页面共用的候选导航与描边表现；由页面场景持有，不依赖剧情或地图逻辑。
-## 确认只发信号，已使用标记由接收方决定何时调用。
+## 通过共用组件成功确认后才发业务信号；重复确认不会再次发出。
 extends Control
 
 signal confirmed(node: Control)
+signal reading_requested(node: Control)
 
 const SELECTABLE_GROUP: StringName = &"selectable"
 const FORWARD_EPSILON: float = 0.01
@@ -18,44 +19,12 @@ const ACTION_DIRECTIONS: Dictionary = {
 
 var _candidates: Array[Control] = []
 var _outlines: Dictionary = {}
-var _used_ids: Dictionary = {}
+var _progress_notice: Label
 var _selected: Control = null
+var reading: bool = false
 
 
-class SelectionOutline extends Control:
-	const OUTLINE_PX: int = 1
-	const ACTIVE_OUTLINE_PX: int = 2
-	const DARK: Color = Color("443b2c")
-	const BRIGHT: Color = Color("fff9e5")
-	const USED_SHADE: Color = Color(0.34, 0.34, 0.34, 0.48)
-	const CHECK_MARGIN: float = 24.0
-	const CHECK_WIDTH: float = 2.0
-	const CHECK_BEND: Vector2 = Vector2(5.0, 5.0)
-	const CHECK_END: Vector2 = Vector2(14.0, -5.0)
-	var active: bool = false
-	var used: bool = false
-	var candidate: WeakRef
-	var _border: StyleBoxFlat = StyleBoxFlat.new()
-
-	func _ready() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_border.bg_color = Color.TRANSPARENT
-		_border.anti_aliasing = false
-		resized.connect(queue_redraw)
-
-	func _draw() -> void:
-		var bounds: Rect2 = Rect2(Vector2.ZERO, size)
-		if used:
-			draw_rect(bounds, USED_SHADE)
-		# StyleBox 的边框向内绘制，不改变候选本身的容器尺寸。
-		_border.border_color = BRIGHT if active else DARK
-		_border.set_border_width_all(ACTIVE_OUTLINE_PX if active else OUTLINE_PX)
-		draw_style_box(_border, bounds)
-		if used:
-			var start: Vector2 = Vector2(size.x - CHECK_MARGIN, size.y * 0.5)
-			draw_line(start, start + CHECK_BEND, DARK, CHECK_WIDTH)
-			draw_line(start + CHECK_BEND, start + CHECK_END, DARK, CHECK_WIDTH)
-
+const SelectionOutline = preload("res://scripts/interactable.gd")
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -68,6 +37,13 @@ func _ready() -> void:
 	visibility_changed.connect(_on_visibility_changed)
 	resized.connect(_on_layout_changed)
 	_sync_candidates()
+	_progress_notice = Label.new()
+	_progress_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_progress_notice.position = Vector2(64.0, 648.0)
+	_progress_notice.add_theme_color_override("font_color", Color("777777"))
+	_progress_notice.add_theme_font_size_override("font_size", 18)
+	add_child(_progress_notice)
+	_refresh_progress_notice()
 
 
 func _on_visibility_changed() -> void:
@@ -98,7 +74,7 @@ func _on_candidate_visibility_changed(_node: Node) -> void:
 
 ## 仅自身在可见树且启用输入时处理并吞键；隐藏或停用时原样返回。
 func _input(event: InputEvent) -> void:
-	if not is_visible_in_tree() or not is_processing_input():
+	if reading or not is_visible_in_tree() or not is_processing_input():
 		return
 	_sync_candidates()
 	if _candidates.is_empty():
@@ -165,19 +141,27 @@ func move_selection(direction: Vector2) -> void:
 		_select(next)
 
 
-## 仅发出当前候选的确认信号，不读取文本、不翻页、不代替接收方完成业务。
+## 共用组件接受首次交互后发出确认信号；阅读文本与翻页仍由接收方处理。
 func confirm_selection() -> void:
 	_sync_candidates()
-	if _selected != null:
+	if _selected == null or reading:
+		return
+	var interaction = get_interactable(_selected)
+	if interaction == null:
+		return
+	if interaction.progression and not interaction.read:
+		reading_requested.emit(_selected)
+	elif interaction.activate():
 		confirmed.emit(_selected)
 
 
-## 只设置灰底与勾的表现；由信号接收者决定调用时机，无返回值。
+## 同步共用组件的已读状态，不维护第二份已读字典。
 func mark_used(node: Control, used: bool = true) -> void:
 	if not is_instance_valid(node) or not _candidates.has(node):
 		return
-	_used_ids[node.get_instance_id()] = used
-	_refresh_outlines()
+	var interaction = get_interactable(node)
+	if interaction != null:
+		interaction.set_read(used)
 
 
 func _is_eligible(node: Control) -> bool:
@@ -223,6 +207,9 @@ func _sync_candidates() -> void:
 func _add_outline(node: Control) -> void:
 	var outline: SelectionOutline = SelectionOutline.new()
 	outline.candidate = weakref(node)
+	outline.hint_key = StringName(node.get_meta("hint_key", ""))
+	outline.progression = bool(node.get_meta("progression", false))
+	outline.state_changed.connect(_refresh_progress_notice)
 	# 放在导航层，避免覆盖层被候选自身的 Container 当作额外布局元素。
 	add_child(outline)
 	_outlines[node.get_instance_id()] = outline
@@ -270,8 +257,8 @@ func _refresh_outlines() -> void:
 		if outline == null:
 			continue
 		outline.active = node == _selected
-		outline.used = bool(_used_ids.get(node.get_instance_id(), false))
 		outline.queue_redraw()
+	_refresh_progress_notice()
 
 
 func _sync_outline_rects() -> void:
@@ -311,7 +298,6 @@ func _on_candidate_input(event: InputEvent, node: Control) -> void:
 
 
 func _on_node_removed(node: Node) -> void:
-	_used_ids.erase(node.get_instance_id())
 	if node.is_in_group(SELECTABLE_GROUP):
 		refresh_candidates()
 
@@ -319,3 +305,20 @@ func _on_node_removed(node: Node) -> void:
 func _comes_before(first: Control, second: Control) -> bool:
 	# 候选组不承诺顺序，默认项因此显式服从场景树中的页面顺序。
 	return second.is_greater_than(first)
+
+## 返回同一个交互组件；页面控制器只提供阅读完成状态，不另存一套已读。
+func get_interactable(node: Control) -> Control:
+	return _outlines.get(node.get_instance_id()) as Control
+
+func _refresh_progress_notice() -> void:
+	if not is_instance_valid(_progress_notice):
+		return
+	var pending: bool = false
+	var selected_item = get_interactable(_selected) if is_instance_valid(_selected) else null
+	if selected_item != null and selected_item.progression:
+		pending = not selected_item.read
+	else:
+		for interaction: Control in _outlines.values():
+			pending = pending or (interaction.progression and not interaction.read)
+	_progress_notice.text = SelectionOutline.text_for("progress_pending") if pending else ""
+	_progress_notice.visible = pending

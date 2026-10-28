@@ -55,3 +55,28 @@ anchor_bottom = 1.0
 mouse_filter = 1
 theme_override_fonts/font = ExtResource("1_font")
 script = ExtResource("2_map_grid")
+
+[node name="InvestigationText" type="PanelContainer" parent="."]
+visible = false
+anchor_left = 0.05
+anchor_top = 0.06
+anchor_right = 0.89
+anchor_bottom = 0.42
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_placeholder")
+
+[node name="Margin" type="MarginContainer" parent="InvestigationText"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
+
+[node name="Text" type="Label" parent="InvestigationText/Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.266667, 0.231373, 0.172549, 1)
+autowrap_mode = 3
