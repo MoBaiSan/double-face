@@ -383,6 +383,9 @@ func _setup_dialogue() -> void:
 			component_test = true
 	if not component_test:
 		_dialogue.bind_s0(_pages[&"ScenePage"], show_page)
+		var points: Node = preload("res://scripts/points.gd").new()
+		$Overlay.add_child(points)
+		points.configure(self, _dialogue)
 	if DisplayServer.get_name() == "headless" and args.has("--sp11-self-test"):
 		call_deferred("_run_sp11_self_test")
 

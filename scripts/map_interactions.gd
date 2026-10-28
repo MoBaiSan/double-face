@@ -10,6 +10,7 @@ var _items: Dictionary = {}
 var _narration: Control
 var _text: Label
 var _hovered: StringName = &""
+var request_investigation: Callable
 
 func _init(map: Control) -> void:
 	_map = map
@@ -62,7 +63,10 @@ func confirm_current() -> bool:
 	var item = get_interactable(_map.get_current_node_id())
 	if item == null:
 		return false
-	item.activate()
+	if request_investigation.is_valid():
+		request_investigation.call(_map.get_current_node_id())
+	else:
+		item.activate()
 	_map.queue_redraw()
 	return true
 
@@ -83,8 +87,11 @@ func get_labels() -> Array[Dictionary]:
 	return labels
 
 func _on_investigated(point_id: StringName) -> void:
-	_text.text = INTERACTABLE.text_for(str(point_id))
-	_narration.show()
+	if not request_investigation.is_valid():
+		_text.text = INTERACTABLE.text_for(str(point_id))
+		_narration.show()
+	else:
+		_narration.hide()
 	investigated.emit(point_id)
 	_map.queue_redraw()
 

@@ -1,0 +1,9 @@
+[
+  {"id":"p1","kind":"must","cost":6,"lines":"镜子上落了一层灰。只有正对镜面的那一小块被擦干净了，手印还留在边上，像是有人在这儿站了很久，一直看着自己。","progress":true},
+  {"id":"p2","kind":"must","cost":6,"lines":"谱架倒在地上，谱纸散了一地。最上面那张停在副歌那几行，被人反复折过，折痕已经很深了。","progress":true},
+  {"id":"p3","kind":"must","cost":6,"lines":"麦克风的线断在地上，断口很整齐。没有人去接它，也没有人把它收起来。","progress":true},
+  {"id":"p4","kind":"must","cost":6,"lines":"墙上还贴着一张旧海报，是一个偶像的侧脸。脸那一块被人抠掉了，纸屑落在墙根，还没有扫。","progress":true},
+  {"id":"p5","kind":"must","cost":6,"lines":"门没有锁。推开，里面那间更小，也更暗。房间正中放着一把椅子，正对着一面空墙，椅面有坐过的痕迹。","progress":true},
+  {"id":"p6","kind":"optional","cost":4,"lines":"桌上一个空水杯，杯底留着一圈干掉的水痕。","progress":false},
+  {"id":"p7","kind":"optional","cost":4,"lines":"一把折叠椅靠在墙边，展开着，像是有人随时会回来坐。","progress":false}
+]
