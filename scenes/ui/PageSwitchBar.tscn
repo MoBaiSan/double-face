@@ -1,0 +1,75 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/page_switch_bar.gd" id="1_switch_bar"]
+[ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="Style_normal"]
+bg_color = Color(0.94902, 0.921569, 0.839216, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.654902, 0.588235, 0.447059, 1)
+
+[sub_resource type="StyleBoxFlat" id="Style_hover"]
+bg_color = Color(0.98, 0.96, 0.90, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.266667, 0.231373, 0.172549, 1)
+
+[sub_resource type="StyleBoxFlat" id="Style_pressed"]
+bg_color = Color(0.909804, 0.862745, 0.752941, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.266667, 0.231373, 0.172549, 1)
+
+[sub_resource type="Theme" id="Theme_buttons"]
+default_font = ExtResource("2_font")
+default_font_size = 20
+Button/colors/font_color = Color(0.266667, 0.231373, 0.172549, 1)
+Button/colors/font_hover_color = Color(0.266667, 0.231373, 0.172549, 1)
+Button/colors/font_pressed_color = Color(0.266667, 0.231373, 0.172549, 1)
+Button/colors/font_disabled_color = Color(0.654902, 0.588235, 0.447059, 1)
+Button/styles/normal = SubResource("Style_normal")
+Button/styles/hover = SubResource("Style_hover")
+Button/styles/pressed = SubResource("Style_pressed")
+Button/styles/disabled = SubResource("Style_pressed")
+
+[node name="PageSwitchBar" type="HBoxContainer"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -364.0
+offset_top = -44.0
+offset_right = -100.0
+offset_bottom = -12.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme = SubResource("Theme_buttons")
+theme_override_constants/separation = 12
+script = ExtResource("1_switch_bar")
+
+[node name="BookButton" type="Button" parent="."]
+custom_minimum_size = Vector2(80, 32)
+layout_mode = 2
+focus_mode = 0
+text = "书页"
+
+[node name="MapButton" type="Button" parent="."]
+custom_minimum_size = Vector2(80, 32)
+layout_mode = 2
+focus_mode = 0
+text = "地图"
+
+[node name="BattleButton" type="Button" parent="."]
+custom_minimum_size = Vector2(80, 32)
+layout_mode = 2
+focus_mode = 0
+text = "战斗"

@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://scenes/ui/BookPage.tscn" id="2_book_page"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/MapPage.tscn" id="4_map_page"]
 [ext_resource type="PackedScene" path="res://scenes/ui/BattlePage.tscn" id="5_battle_page"]
 [ext_resource type="PackedScene" path="res://scenes/ui/VitalBar.tscn" id="6_vital_bar"]
+[ext_resource type="PackedScene" path="res://scenes/ui/PageSwitchBar.tscn" id="7_switch_bar"]
 
 [node name="Main" type="Control"]
 anchors_preset = 15
@@ -58,5 +59,8 @@ anchor_bottom = 0.82
 offset_left = -90.0
 offset_right = -34.0
 mouse_filter = 2
+
+[node name="PageSwitchBar" parent="Overlay" instance=ExtResource("7_switch_bar")]
+layout_mode = 1
 
 [editable path="BookPage"]

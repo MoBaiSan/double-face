@@ -17,6 +17,7 @@ const SP04_EXPECTED_COLORS: Array[Color] = [
 @onready var _book_page: Control = $BookPage
 @onready var _throat_placeholder: VitalBar = $Overlay/ThroatPlaceholder
 @onready var _scene_nav: Control = $Pages/ScenePage/PageNav
+@onready var _page_switch_bar = $Overlay/PageSwitchBar
 var _pages: Dictionary = {}
 var _page_data: Dictionary = {}
 var _current_page: StringName = &""
@@ -37,6 +38,7 @@ func _ready() -> void:
 	_connect_page_nav(_book_page)
 	for page_name: StringName in PAGE_NAMES:
 		_connect_page_nav(_pages[page_name] as Control)
+	_page_switch_bar.configure(show_page)
 	show_page(PAGE_NAMES[0])
 	print("[godot-project] ready")
 	if DisplayServer.get_name() == "headless":
@@ -81,6 +83,7 @@ func show_page(name: StringName) -> bool:
 			_set_page_active(_pages[page_name] as Control, page_name == name)
 	_current_page = name
 	_current_data = _page_data[name]
+	_page_switch_bar.refresh(name)
 	if name == &"BattlePage" and not was_battle:
 		GameState.enter_battle()
 	elif was_battle and name != &"BattlePage":
@@ -193,6 +196,7 @@ func _run_self_test() -> void:
 	await _test_navigation_retention()
 	_test_hidden_nav_does_not_consume()
 	_test_unknown_page()
+	_page_switch_bar.run_self_test(self, _check)
 	_observe_main_scene()
 	var current: Node = get_tree().current_scene
 	var path: String = current.scene_file_path if current != null else "<null>"
