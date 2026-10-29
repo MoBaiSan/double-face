@@ -8,5 +8,21 @@
   "threshold_full": 61.0,
   "threshold_low": 31.0,
   "threshold_critical": 1.0,
-  "drain_flush_threshold": 0.01
+  "drain_flush_threshold": 0.01,
+  "battle_player_hp_max": 100,
+  "battle_enemy_hp_max": 100,
+  "battle_player_attack": 20,
+  "battle_enemy_attack": 20,
+  "battle_damage_random_min": 0.9,
+  "battle_damage_random_max": 1.1,
+  "battle_charge_attack_multiplier": 2.5,
+  "battle_charge_received_multiplier": 1.25,
+  "battle_guard_received_multiplier": 0.5,
+  "battle_item_heal": 40,
+  "battle_item_uses": 1,
+  "battle_action_seconds": 0.4,
+  "battle_attack_shift_px": 6.0,
+  "battle_hit_shift_px": 3.0,
+  "battle_feedback_seconds": 0.16,
+  "battle_pose_scale_delta": 0.03
 }

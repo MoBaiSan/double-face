@@ -1,8 +1,9 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=11 format=3]
 
-[ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="1_font"]
+[ext_resource type="Script" path="res://scripts/battle.gd" id="1_battle"]
+[ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="2_font"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_placeholder"]
+[sub_resource type="StyleBoxFlat" id="PanelStyle"]
 bg_color = Color(0.94902, 0.921569, 0.839216, 1)
 border_width_left = 1
 border_width_top = 1
@@ -10,12 +11,90 @@ border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.654902, 0.588235, 0.447059, 1)
 
+[sub_resource type="StyleBoxFlat" id="ButtonStyle"]
+bg_color = Color(0.92, 0.89, 0.81, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.34, 0.27, 1)
+
+[sub_resource type="StyleBoxFlat" id="FocusStyle"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.70, 0.56, 0.34, 1)
+
+[sub_resource type="StyleBoxFlat" id="BarBackground"]
+bg_color = Color(0.80, 0.76, 0.68, 1)
+
+[sub_resource type="StyleBoxFlat" id="BarFill"]
+bg_color = Color(0.39, 0.37, 0.33, 1)
+
+[sub_resource type="Theme" id="BattleTheme"]
+default_font = ExtResource("2_font")
+default_font_size = 24
+Panel/styles/panel = SubResource("PanelStyle")
+Label/colors/font_color = Color(0.266667, 0.231373, 0.172549, 1)
+Button/colors/font_color = Color(0.266667, 0.231373, 0.172549, 1)
+Button/colors/font_hover_color = Color(0.266667, 0.231373, 0.172549, 1)
+Button/colors/font_pressed_color = Color(0.266667, 0.231373, 0.172549, 1)
+Button/colors/font_focus_color = Color(0.266667, 0.231373, 0.172549, 1)
+Button/colors/font_disabled_color = Color(0.55, 0.54, 0.51, 1)
+Button/styles/normal = SubResource("ButtonStyle")
+Button/styles/hover = SubResource("ButtonStyle")
+Button/styles/pressed = SubResource("ButtonStyle")
+Button/styles/disabled = SubResource("ButtonStyle")
+Button/styles/focus = SubResource("FocusStyle")
+ProgressBar/styles/background = SubResource("BarBackground")
+ProgressBar/styles/fill = SubResource("BarFill")
+
+[sub_resource type="Animation" id="Feedback"]
+resource_name = "feedback"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/path = NodePath("EdgeNear:scale")
+tracks/0/interp = 1
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Vector2(1, 1), Vector2(2, 2), Vector2(1, 1)]
+}
+tracks/1/type = "value"
+tracks/1/path = NodePath("EdgeFar:scale")
+tracks/1/interp = 1
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Vector2(1, 1), Vector2(2, 2), Vector2(1, 1)]
+}
+tracks/2/type = "value"
+tracks/2/path = NodePath(".:modulate")
+tracks/2/interp = 1
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Color(1, 1, 1, 1), Color(1, 1, 1, 0), Color(1, 1, 1, 1)]
+}
+
+[sub_resource type="AnimationLibrary" id="FeedbackLibrary"]
+_data = {
+&"feedback": SubResource("Feedback")
+}
+
 [node name="BattlePage" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
+theme = SubResource("BattleTheme")
+script = ExtResource("1_battle")
 
 [node name="ViewArea" type="Panel" parent="."]
 anchor_left = 0.05
@@ -23,19 +102,93 @@ anchor_top = 0.06
 anchor_right = 0.89
 anchor_bottom = 0.5
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_placeholder")
 
-[node name="Label" type="Label" parent="ViewArea"]
+[node name="Background" type="ColorRect" parent="ViewArea"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = -2.0
+offset_bottom = -2.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.231373, 0.192157, 0.133333, 1)
-theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 24
-text = "画面区"
+color = Color(0.89, 0.87, 0.80, 1)
+
+[node name="PlayerAnchor" type="Node2D" parent="ViewArea"]
+position = Vector2(320, 205)
+
+[node name="Visual" type="Node2D" parent="ViewArea/PlayerAnchor"]
+
+[node name="EdgeFar" type="Polygon2D" parent="ViewArea/PlayerAnchor/Visual"]
+position = Vector2(3, 0)
+color = Color(0.44, 0.42, 0.37, 0.1)
+polygon = PackedVector2Array(-18, 0, -25, -30, -21, -66, -30, -88, -18, -110, -9, -119, -13, -138, -5, -151, 8, -147, 16, -132, 10, -117, 23, -105, 28, -76, 21, -54, 23, -26, 14, 0, 2, -5, -4, -1)
+antialiased = true
+
+[node name="EdgeNear" type="Polygon2D" parent="ViewArea/PlayerAnchor/Visual"]
+position = Vector2(-2, 0)
+color = Color(0.44, 0.42, 0.37, 0.18)
+polygon = PackedVector2Array(-18, 0, -25, -30, -21, -66, -30, -88, -18, -110, -9, -119, -13, -138, -5, -151, 8, -147, 16, -132, 10, -117, 23, -105, 28, -76, 21, -54, 23, -26, 14, 0, 2, -5, -4, -1)
+antialiased = true
+
+[node name="Core" type="Polygon2D" parent="ViewArea/PlayerAnchor/Visual"]
+position = Vector2(0, 0)
+color = Color(0.44, 0.42, 0.37, 0.72)
+polygon = PackedVector2Array(-18, 0, -25, -30, -21, -66, -30, -88, -18, -110, -9, -119, -13, -138, -5, -151, 8, -147, 16, -132, 10, -117, 23, -105, 28, -76, 21, -54, 23, -26, 14, 0, 2, -5, -4, -1)
+antialiased = true
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="ViewArea/PlayerAnchor/Visual"]
+callback_mode_process = 2
+libraries = {
+&"": SubResource("FeedbackLibrary")
+}
+
+[node name="EnemyAnchor" type="Node2D" parent="ViewArea"]
+position = Vector2(760, 205)
+
+[node name="Visual" type="Node2D" parent="ViewArea/EnemyAnchor"]
+
+[node name="EdgeFar" type="Polygon2D" parent="ViewArea/EnemyAnchor/Visual"]
+position = Vector2(3, 0)
+color = Color(0.33, 0.32, 0.29, 0.1)
+polygon = PackedVector2Array(-29, 0, -24, -18, -32, -43, -26, -67, -38, -83, -25, -109, -7, -114, -1, -132, 1, -148, 15, -153, 24, -140, 19, -122, 32, -103, 28, -84, 37, -62, 23, -42, 29, -19, 21, 0, 6, -8, -4, -1)
+antialiased = true
+
+[node name="EdgeNear" type="Polygon2D" parent="ViewArea/EnemyAnchor/Visual"]
+position = Vector2(-2, 0)
+color = Color(0.33, 0.32, 0.29, 0.18)
+polygon = PackedVector2Array(-29, 0, -24, -18, -32, -43, -26, -67, -38, -83, -25, -109, -7, -114, -1, -132, 1, -148, 15, -153, 24, -140, 19, -122, 32, -103, 28, -84, 37, -62, 23, -42, 29, -19, 21, 0, 6, -8, -4, -1)
+antialiased = true
+
+[node name="Core" type="Polygon2D" parent="ViewArea/EnemyAnchor/Visual"]
+position = Vector2(0, 0)
+color = Color(0.33, 0.32, 0.29, 0.72)
+polygon = PackedVector2Array(-29, 0, -24, -18, -32, -43, -26, -67, -38, -83, -25, -109, -7, -114, -1, -132, 1, -148, 15, -153, 24, -140, 19, -122, 32, -103, 28, -84, 37, -62, 23, -42, 29, -19, 21, 0, 6, -8, -4, -1)
+antialiased = true
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="ViewArea/EnemyAnchor/Visual"]
+callback_mode_process = 2
+libraries = {
+&"": SubResource("FeedbackLibrary")
+}
+
+[node name="EnemyName" type="Label" parent="ViewArea"]
+offset_left = 660.0
+offset_top = 213.0
+offset_right = 860.0
+offset_bottom = 247.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.47, 0.44, 0.38, 1)
+text = "迷境"
 horizontal_alignment = 1
-vertical_alignment = 1
+
+[node name="EnemyHP" type="ProgressBar" parent="ViewArea"]
+offset_left = 700.0
+offset_top = 254.0
+offset_right = 820.0
+offset_bottom = 260.0
+mouse_filter = 2
+show_percentage = false
 
 [node name="CommandWindow" type="Panel" parent="."]
 anchor_left = 0.05
@@ -43,19 +196,69 @@ anchor_top = 0.56
 anchor_right = 0.35
 anchor_bottom = 0.92
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_placeholder")
 
-[node name="Label" type="Label" parent="CommandWindow"]
+[node name="MarginContainer" type="MarginContainer" parent="CommandWindow"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.231373, 0.192157, 0.133333, 1)
-theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 24
-text = "指令窗"
-horizontal_alignment = 1
-vertical_alignment = 1
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="GridContainer" type="GridContainer" parent="CommandWindow/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 16
+columns = 2
+
+[node name="Attack" type="Button" parent="CommandWindow/MarginContainer/GridContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+focus_neighbor_left = NodePath("../Charge")
+focus_neighbor_right = NodePath("../Charge")
+focus_neighbor_top = NodePath("../Guard")
+focus_neighbor_bottom = NodePath("../Guard")
+disabled = true
+text = "攻击"
+
+[node name="Charge" type="Button" parent="CommandWindow/MarginContainer/GridContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+focus_neighbor_left = NodePath("../Attack")
+focus_neighbor_right = NodePath("../Attack")
+focus_neighbor_top = NodePath("../Item")
+focus_neighbor_bottom = NodePath("../Item")
+disabled = true
+text = "蓄力"
+
+[node name="Guard" type="Button" parent="CommandWindow/MarginContainer/GridContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+focus_neighbor_left = NodePath("../Item")
+focus_neighbor_right = NodePath("../Item")
+focus_neighbor_top = NodePath("../Attack")
+focus_neighbor_bottom = NodePath("../Attack")
+disabled = true
+text = "防御"
+
+[node name="Item" type="Button" parent="CommandWindow/MarginContainer/GridContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+focus_neighbor_left = NodePath("../Guard")
+focus_neighbor_right = NodePath("../Guard")
+focus_neighbor_top = NodePath("../Charge")
+focus_neighbor_bottom = NodePath("../Charge")
+disabled = true
+text = "道具"
 
 [node name="StatusWindow" type="Panel" parent="."]
 anchor_left = 0.39
@@ -63,16 +266,25 @@ anchor_top = 0.56
 anchor_right = 0.89
 anchor_bottom = 0.92
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_placeholder")
 
-[node name="Label" type="Label" parent="StatusWindow"]
+[node name="StatusText" type="Label" parent="StatusWindow"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 24.0
+offset_right = -24.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.231373, 0.192157, 0.133333, 1)
-theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 24
-text = "状态窗"
-horizontal_alignment = 1
+text = "琥珀　H %d/%d"
 vertical_alignment = 1
+
+[node name="ReturnButton" type="Button" parent="."]
+visible = false
+anchor_left = 0.75
+anchor_top = 0.5
+anchor_right = 0.89
+anchor_bottom = 0.5
+offset_top = 8.0
+offset_bottom = 36.0
+theme_override_font_sizes/font_size = 20
+disabled = true
+text = "返回"

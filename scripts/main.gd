@@ -42,6 +42,7 @@ func _ready() -> void:
 	_page_switch_bar.configure(show_page)
 	show_page(PAGE_NAMES[0])
 	_setup_dialogue()
+	$Pages/BattlePage.configure(self)
 	print("[godot-project] ready")
 	if DisplayServer.get_name() == "headless":
 		var user_args: PackedStringArray = OS.get_cmdline_user_args()
@@ -81,6 +82,8 @@ func _print_sp04_demo(prefix: String, bar: VitalBar) -> void:
 ## 显示指定常驻页并切换空数据引用；未知页返回 false 且不改变当前页。
 func show_page(name: StringName) -> bool:
 	if not _pages.has(name):
+		return false
+	if not $Pages/BattlePage.can_show_page(name):
 		return false
 	var was_battle: bool = _current_page == &"BattlePage"
 	if name != _current_page:
