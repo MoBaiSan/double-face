@@ -189,13 +189,13 @@ func _test_keyboard_event_path() -> void:
 	GameState.vital_now = GameState.vital_max
 	_map.reset_map()
 	_push_key_event(KEY_DOWN, true)
-	var pending_ok: bool = _map.get_pending_node_id() == &"c1" and _map.get_current_node_id() == &"entry_exit"
+	var pending_ok: bool = _map.get_current_node_id() == &"c1" and _map.get_step_count() == 1 and _map.get_pending_node_id() == &""
 	_push_key_event(KEY_DOWN, false)
-	_check(pending_ok, "keyboard_event_pending target=c1")
+	_check(pending_ok, "keyboard_event_direction_moves current=c1 steps=1 pending=empty")
 	_push_key_event(KEY_ENTER, true)
-	var moved_ok: bool = _map.get_current_node_id() == &"c1" and _map.get_step_count() == 1
+	var moved_ok: bool = _map.get_current_node_id() == &"c1" and _map.get_step_count() == 1 and _map.get_pending_node_id() == &""
 	_push_key_event(KEY_ENTER, false)
-	_check(moved_ok, "keyboard_event_confirm_move current=c1 steps=1")
+	_check(moved_ok, "keyboard_event_confirm_no_extra_move current=c1 steps=1 pending=empty")
 	map_page.visible = previous_map_visible
 	scene_page.visible = previous_scene_visible
 
@@ -257,8 +257,8 @@ func _test_round_trip() -> void:
 	for index: int in range(6, route.size()):
 		_map.try_move_to(route[index])
 	_check(_map.get_step_count() == 12, "shortest_round_trip steps=12")
-	_check(is_equal_approx(GameState.vital_now, 88.0),
-		"shortest_round_trip_vital expected=88.000000 actual=%.6f" % GameState.vital_now)
+	_check(is_equal_approx(GameState.vital_now, 94.0),
+		"shortest_round_trip_vital expected=94.000000 actual=%.6f" % GameState.vital_now)
 
 
 func _test_balance_guards() -> void:

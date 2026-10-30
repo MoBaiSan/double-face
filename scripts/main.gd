@@ -389,6 +389,7 @@ func _setup_dialogue() -> void:
 		var points: Node = preload("res://scripts/points.gd").new()
 		$Overlay.add_child(points)
 		points.configure(self, _dialogue)
+		_pages[&"MapPage"].get_node("MapArea/CursorContainer/MapGrid").bind_progress(points)
 	if DisplayServer.get_name() == "headless" and args.has("--sp11-self-test"):
 		call_deferred("_run_sp11_self_test")
 

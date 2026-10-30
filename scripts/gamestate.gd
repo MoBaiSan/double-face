@@ -1,5 +1,22 @@
-## 序章的嗓子条数值来源；只读取旋钮，不承载地图、战斗或剧情。
+## 序章嗓子条与必查进度；离场权限集中检查，地图与战斗实例各自管理表现。
 extends Node
+
+signal progress_changed(done: int, open: bool)
+signal exit_confirmed
+const REQUIRED_COUNT: int = 5
+const NORMAL_RETURN_STEPS: int = 6
+var _required_ids: Dictionary = {}
+var _completed_ids: Dictionary = {}
+var _progress_valid: bool = false
+var _p5_read: bool = false
+var _p5_won: bool = false
+var _exit_consumed: bool = false
+var must_done: int:
+	get:
+		return _completed_ids.size()
+var exit_open: bool:
+	get:
+		return _progress_valid and must_done == REQUIRED_COUNT
 
 signal vital_changed(vital_now: float, vital_max: float, reason: StringName)
 signal frozen_changed(frozen: bool)
@@ -28,6 +45,8 @@ func _ready() -> void:
 	vital_max = _knob("vital_max")
 	_vital_now = vital_max
 	set_process(true)
+	if "--sp10-self-test" in OS.get_cmdline_user_args():
+		_run_sp10_self_test.call_deferred()
 
 
 func _process(delta: float) -> void:
@@ -99,7 +118,11 @@ func is_frozen() -> bool:
 
 ## 结算战斗胜利回 10 点；战斗胜利事件发生时调用且自动截断上限。
 func on_battle_win() -> void:
+	var alive_before: bool = _vital_now > 0.0
 	_set_vital(_vital_now + _knob("battle_win_recovery"), &"battle_win")
+	if alive_before and _progress_valid and _p5_read:
+		_p5_won = true
+		_complete_required(&"point5")
 
 
 ## 读取尚未结算的时间扣除累积；冻结自检用它确认清零。
@@ -161,3 +184,50 @@ func _load_knobs() -> void:
 
 func _knob(name: String) -> float:
 	return float(_knobs.get(name, 0.0))
+
+## 只绑定已验证的五个必查点；配置缺失或不完整时出口保持关闭。
+func configure_progress(definitions: Dictionary, map_ids: Dictionary) -> void:
+	_required_ids.clear()
+	for map_id: Variant in map_ids:
+		var definition: Dictionary = definitions.get(map_ids[map_id], {})
+		if definition.get("progress", false):
+			_required_ids[StringName(map_id)] = true
+	_progress_valid = _required_ids.size() == REQUIRED_COUNT and _required_ids.has(&"point5")
+	reset_progress()
+
+## 只清本局数据；完整第二局由调用者销毁并重建含BattlePage的Main。
+func reset_progress() -> void:
+	_completed_ids.clear()
+	_p5_read = false
+	_p5_won = false
+	_exit_consumed = false
+	progress_changed.emit(must_done, exit_open)
+
+func record_investigated(map_id: StringName) -> void:
+	if not _progress_valid or not _required_ids.has(map_id):
+		return
+	if map_id == &"point5":
+		_p5_read = true
+		if not _p5_won:
+			return
+	_complete_required(map_id)
+
+func _complete_required(map_id: StringName) -> void:
+	if _completed_ids.has(map_id):
+		return
+	_completed_ids[map_id] = true
+	progress_changed.emit(must_done, exit_open)
+
+func can_confirm_exit(at_entry: bool, map_active: bool) -> bool:
+	return exit_open and at_entry and map_active and not _frozen and _vital_now > 0.0 and not _exit_consumed
+
+func try_confirm_exit(at_entry: bool, map_active: bool) -> bool:
+	if not can_confirm_exit(at_entry, map_active):
+		return false
+	_exit_consumed = true
+	exit_confirmed.emit()
+	return true
+
+func _run_sp10_self_test() -> void:
+	await get_tree().process_frame
+	await load("res://scripts/sp10_selftest.gd").new().run(self)

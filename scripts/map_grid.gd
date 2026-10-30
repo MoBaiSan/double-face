@@ -1,5 +1,7 @@
 ## 里侧点阵的显示与移动；调查使用书页共用的交互组件。
 extends Control
+var _visited: Dictionary = {}
+var _arrival_text: String = ""
 signal moved(from_id: StringName, to_id: StringName, step_count: int)
 const MAP_PATH: String = "res://data/map.json"
 const MAP_DATA_SCRIPT = preload("res://scripts/map_data.gd")
@@ -39,6 +41,8 @@ func _sync_visibility_processing() -> void:
 	set_process_unhandled_input(active)
 ## 将光标恢复到入口并建立初始两点揭开集合；进入里侧时调用。
 func reset_map() -> void:
+	_visited.clear()
+	GameState.reset_progress()
 	if not _playable:
 		_current_id = &""
 		_pending_id = &""
@@ -48,6 +52,7 @@ func reset_map() -> void:
 		queue_redraw()
 		return
 	_current_id = _start_id
+	_visited[_start_id] = true
 	_pending_id = &""
 	_hovered_id = &""
 	_step_count = 0
@@ -58,16 +63,19 @@ func reset_map() -> void:
 		_interactions.reset()
 	_refresh_current_point_label()
 	queue_redraw()
-## 尝试移动到指定相邻点；鼠标点击和确认键都只通过此入口。
+## 地图移动统一入口：首次成功到达扣步费，回访免费，冻结或归零始终拒绝。
 func try_move_to(node_id: StringName) -> bool:
+	if GameState.is_frozen() or GameState.vital_now <= 0.0:
+		return false
 	if not _points.has(node_id) or not _revealed.has(node_id):
 		return false
 	if not _is_adjacent(_current_id, node_id):
 		return false
-	if not GameState.pay_step():
+	if not _visited.has(node_id) and not GameState.pay_step():
 		return false
 	var from_id: StringName = _current_id
 	_current_id = node_id
+	_visited[node_id] = true
 	_step_count += 1
 	_refresh_current_point_label()
 	_pending_id = &""
@@ -95,6 +103,8 @@ func get_hovered_node_id() -> StringName:
 ## 返回当前确认候选；没有候选时确认静默失败。
 func confirm_selection() -> bool:
 	if _pending_id == &"":
+		if _current_id == _start_id:
+			return _confirm_exit()
 		return _interactions.confirm_current() if _interactions != null else false
 	return try_move_to(_pending_id)
 ## 根据屏幕方向选择一个相邻候选，不在此处扣步费。
@@ -154,6 +164,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	else:
 		return
 	if select_direction(direction):
+		var target: StringName = _pending_id
+		_pending_id = &""
+		try_move_to(target)
 		get_viewport().set_input_as_handled()
 func _load_map() -> void:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(MAP_PATH))
@@ -356,3 +369,22 @@ func _run_self_test() -> void:
 
 func get_interactable(point_id: StringName) -> Control:
 	return _interactions.get_interactable(point_id) if _interactions != null else null
+func bind_progress(points: Node) -> void:
+	GameState.configure_progress(points.get_definitions(), points.MAP_IDS)
+	_arrival_text = str(points.get_dialogue().get_lines()["T157"]["text"])
+	_interactions.investigated.connect(_record_progress)
+	moved.connect(_refresh_progress_ui)
+	for event: Signal in [GameState.progress_changed, GameState.vital_changed, GameState.frozen_changed, GameState.exit_confirmed, visibility_changed]:
+		event.connect(_refresh_progress_ui)
+	get_parent().get_parent().get_parent().get_node("ExitConfirm").pressed.connect(_confirm_exit)
+	_refresh_progress_ui()
+func _record_progress(map_id: StringName) -> void:
+	GameState.record_investigated(map_id)
+func _confirm_exit() -> bool:
+	return GameState.try_confirm_exit(_current_id == _start_id, is_visible_in_tree())
+func _refresh_progress_ui(_a: Variant = null, _b: Variant = null, _c: Variant = null) -> void:
+	var page: Control = get_parent().get_parent().get_parent()
+	var at_entry: bool = _current_id == _start_id
+	page.get_node("ReturnHint").visible = GameState.exit_open and GameState.vital_now > 0.0
+	page.get_node("ReturnHint").text = _arrival_text if at_entry and not GameState.is_frozen() else "该回去了"
+	page.get_node("ExitConfirm").visible = GameState.can_confirm_exit(at_entry, is_visible_in_tree())

@@ -228,13 +228,13 @@ func _test_close_restores_input() -> void:
 	_close()
 	var before: int = _map.get_step_count()
 	_key(KEY_RIGHT)
+	var moved: bool = _map.get_current_node_id() == &"point2" and _map.get_step_count() == before + 1 and _map.get_pending_node_id() == &""
 	_key(KEY_ENTER)
-	var moved: bool = _map.get_current_node_id() == &"point2" and _map.get_step_count() == before + 1
-	var opened: bool = _points.investigate(&"point2")
+	var opened: bool = _dialogue.is_playing() and _dialogue.get_current_key() == "T136"
 	_main.show_page(&"ScenePage")
 	var closed: bool = not _dialogue.is_playing()
 	_main.show_page(&"MapPage")
-	_check(moved and opened and closed, "close_restores_map_input expected=move_after_close hidden_box_stopped")
+	_check(moved and opened and closed, "close_restores_map_input expected=direction_moves_once pending_empty confirm_opens_point2 hidden_box_stopped")
 
 func _test_caption_allows_investigation() -> void:
 	_reset()
