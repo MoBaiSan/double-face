@@ -205,3 +205,17 @@
 - 代码复审：`codex-13w` 首轮 **不可提交 MUSTFIX=1** —— 新出口按钮（x 832..1139.2 / y 669.6..712.8）被 Overlay 的翻页栏（x 916..1180 / y 676..708）压住，中心点落在「书页」按钮里；改法＝整段移到地图框下方左侧（实测 `P=(64,669.6) S=(396.8,43.2)`），并补 `exit_button_not_covered`（真实 global_rect 相交面积为 0）与 `exit_button_real_click_confirms`（真实点击中心 → 只发一次、页不切走）两条断言。复验 **可提交 MUSTFIX=0**。
 - 自检基线（此后对照用）：SP-10 **48** / SP-23 55 / SP-09 54 / SP-11 21 / SP-07 32 / SP-06 42 / SP-03 27 / SP-04 16 / SP-05 15，共 **322** 条 PASS，`failures` 全 0、无 SCRIPT ERROR。
 - 欠账：①A8「五查点全含战斗后出口可按」仅自检覆盖，真人走一遍未做；②未截图（第 9 条需逐次批准）；③`MapPage.tscn`/`main.gd` 等工作副本是 CRLF（`.gitattributes` 按 LF 存库）。
+
+---
+
+## SP-14 状态机 S0–S6 全接线（2026-10-31 完成，提交 477250b）
+
+- 卡：`production\序章_施工任务卡.md:630`；方案 `…\SP-14-方案.md` 306 行（过 `codex-plan` 复审 `可实施 / MUSTFIX=0`）。
+- 新增 `scripts\prologue_flow.gd`（252 行）、`prologue_scene.gd`、`prologue_checkpoint.gd`、`prologue_test_context.gd`、`sp14_selftest.gd`（60 条）、`scenes\ui\DepartureScene.tscn`；`scripts\gamestate.gd` +140（七状态 + 合法边 + `begin_session`/`run_id` + E1–E17 事件位）；`scripts\main.gd` 改写接线（−58/+58 内）。
+- 扣点窗口按拍板：S2/S3 掉、S2b 冻结、S0/S1/S6 不扣；换页只用 `show_page`，不改剧情态；S5 只接重来入口（**重来 UI 留给 SP-15**）。
+- 检查点写盘失败**不**登记成功、保留旧文件（`prologue_checkpoint.gd`）。
+- 旧断言随新状态机**等量替换**（未删检查、未降条数）：SP-10 44→48、SP-09 53→54、SP-11 20→21、SP-06 36→42 逐步转绿；SP-23 四条红按 `codex-plan` 裁决「等量替换 4 / 返工 0」修好，断言原文未改。
+- 代码复审：`codex-13w` 首轮 **不可提交 MUSTFIX=1** —— 重来接受新 BattlePage 实例后先发了新 `run_id`，实例却仍持 `configure` 时捕获的旧代号，接口回成功、之后真实点5开不了战（`prologue_flow.gd:214`）。改法＝`begin_session` 之后对新 actor 重新 `configure(main)`，并在 `sp14_selftest.gd:301-302` 补「重来后真的点开点5、战斗真的起来、代号是新的」后继观察；复验 **可提交 MUSTFIX=0**。
+- 自检基线（此后对照用）：SP-14 **60** / SP-10 48 / SP-23 55 / SP-09 54 / SP-11 21 / SP-07 32 / SP-06 42 / SP-03 27 / SP-04 16 / SP-05 15，共 **370** 条 PASS，`failures` 全 0、无 SCRIPT ERROR。
+- 欠账：①A9 真人掐表 12–16 分钟未测；②S0/S6 站 60 秒不掉点、S2 每格 4.8 的人工验证未做（仅自检覆盖）；③未截图（第 9 条需逐次批准）；④未重打 exe（第 17 条）。
+- 小尾巴：工作副本仍是 CRLF（`.gitattributes` 按 LF 存库，不影响运行）；卡:441 算术笔误（6+6+4+4 写 100→76）仍记账未改。
