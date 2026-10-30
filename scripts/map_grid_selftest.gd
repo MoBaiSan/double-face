@@ -10,9 +10,11 @@ const MAP_DATA_SCRIPT = preload("res://scripts/map_data.gd")
 ## 在显式自测参数下加载拆分后的断言模块，并把失败数映射为进程退出码。
 func run(map: Node) -> int:
 	_map = map
+	var scope = preload("res://scripts/prologue_test_context.gd").component_scope(map.get_tree().current_scene)
 	if not GameState.vital_changed.is_connected(_on_test_vital_changed):
 		GameState.vital_changed.connect(_on_test_vital_changed)
 	_prepare_map_state()
+	_map.get_tree().current_scene.show_page(&"ScenePage")
 	_test_task_guards()
 	_test_mouse_event_path()
 	_test_initial_layout_and_input()
@@ -23,10 +25,13 @@ func run(map: Node) -> int:
 	_test_epsilon_boundaries()
 	_test_corner_labels()
 	print("[SP-06] failures=%d" % _failures)
+	GameState.vital_changed.disconnect(_on_test_vital_changed)
+	scope.restore()
 	return _failures
 
 
 func _prepare_map_state() -> void:
+	preload("res://scripts/prologue_test_context.gd").enter_domain(_map.get_tree().current_scene)
 	GameState.set_process(false)
 	GameState.set_frozen(true)
 	GameState.set_frozen(false)
@@ -64,6 +69,10 @@ func _test_task_guards() -> void:
 	map_page.visible = false
 	_check(not _map.is_processing() and not _map.is_processing_unhandled_input(), "hidden_processing disabled=true")
 	map_page.visible = was_visible
+	_test_nav_refresh(map_page)
+
+
+func _test_nav_refresh(map_page: Control) -> void:
 	var scene_page: Control = map_page.get_parent().get_node("ScenePage") as Control
 	var nav: Control = scene_page.get_node("PageNav") as Control
 	var before: int = nav.get_candidates().size()
@@ -278,7 +287,7 @@ func _test_balance_guards() -> void:
 	no_point = no_point and GameState.get_point_pay_call_count() == calls_before + 1
 	_check(no_point, "no_point_at_zero allowed=false value=0 calls+1")
 	var step_cost: float = GameState.get_knob("step_cost")
-	_map.reset_map()
+	_prepare_map_state()
 	GameState.vital_now = step_cost - 0.5
 	var before_insufficient: float = GameState.vital_now
 	var insufficient: bool = not _map.try_move_to(&"c1") and _map.get_step_count() == 0
@@ -292,6 +301,7 @@ func _test_balance_guards() -> void:
 
 
 func _test_epsilon_boundaries() -> void:
+	_prepare_map_state()
 	var maximum: float = GameState.vital_max
 	var rate: float = GameState.get_knob("time_drain_per_second")
 	var threshold: float = GameState.get_knob("drain_flush_threshold")
@@ -315,7 +325,7 @@ func _test_epsilon_boundaries() -> void:
 
 
 func _test_corner_labels() -> void:
-	_map.reset_map()
+	_prepare_map_state()
 	_map.try_move_to(&"c1")
 	_map.try_move_to(&"point1")
 	var corner_label: Label = _map.get_node("../../CurrentPointLabel") as Label

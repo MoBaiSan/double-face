@@ -23,6 +23,7 @@ var _definitions: Dictionary = {}
 var _valid: bool = false
 var _pending_map_id: StringName = &""
 var _pending_item: WeakRef
+var _pending_run: int = -1
 var last_error: String = ""
 
 func configure(main: Control, story: Control) -> void:
@@ -128,6 +129,9 @@ func get_progress_count() -> int:
 	return count
 
 func investigate(map_id: StringName) -> bool:
+	if not GameState.can_investigate():
+		return false
+	_pending_run = GameState.run_id
 	var id: String = str(MAP_IDS.get(map_id, ""))
 	var item: Control = _map.get_interactable(map_id)
 	if not _valid or item == null or not _definitions.has(id):
@@ -150,7 +154,7 @@ func _on_dialogue_finished(skipped: bool) -> void:
 	var map_id: StringName = _pending_map_id
 	var pending: WeakRef = _pending_item
 	_clear_pending()
-	if skipped or pending == null or not _page.is_visible_in_tree():
+	if skipped or pending == null or _pending_run != GameState.run_id or not _page.is_visible_in_tree():
 		return
 	var item: Control = pending.get_ref() as Control
 	if item == null or item != _map.get_interactable(map_id) or item.read:

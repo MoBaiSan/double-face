@@ -15,6 +15,11 @@ var _started: Array[String] = []
 func run(main: Control, player: Control) -> int:
 	_main = main
 	_player = player
+	var scope = preload("res://scripts/prologue_test_context.gd").new()
+	scope.remember(main)
+	scope.enter_domain(main, GameState.State.S0)
+	GameState.record_event(&"E1", true)
+	main._flow.content.present(GameState.state)
 	await main.get_tree().process_frame
 	await main.get_tree().process_frame
 	GameState.set_process(false)
@@ -27,6 +32,7 @@ func run(main: Control, player: Control) -> int:
 	_check_caption()
 	_player.line_started.disconnect(_on_line_started)
 	print("[SP-11] failures=%d" % _failures)
+	scope.restore()
 	return _failures
 
 func _check_data() -> void:
@@ -113,9 +119,15 @@ func _check_s0() -> void:
 	_check_r3()
 	_check_r4()
 	_main.show_page(&"ScenePage")
+	var sequence: Array[String] = _player._keys.duplicate()
+	var started_before: int = _started.size()
 	_click(option.get_global_rect().get_center())
-	_check(not _player.is_playing() and _player.get_story_phase() == &"DONE",
-		"old_speaker_no_replay expected=stopped actual_playing=%s" % _player.is_playing())
+	_main.get_node("Pages/ScenePage/PageNav").reading_requested.emit(option)
+	var expected: Array[String] = ["T122", "T123", "T124", "T125", "T126", "T127", "T128", "T129"]
+	var no_replay: bool = _started.slice(started_before).all(func(key): return key not in ["T112", "T116"])
+	_check(_player._keys == sequence and sequence == expected and _player.get_story_phase() == &"DONE"
+		and GameState.state == GameState.State.S1 and _player.get_current_key() in expected and no_replay,
+		"old_speaker_no_replay expected=S0_DONE S1_sequence_unchanged")
 
 func _check_r3() -> void:
 	_player.advance_time(100.0)
@@ -136,12 +148,13 @@ func _check_r4() -> void:
 	for tick: int in range(120):
 		_player.advance_time(0.1)
 	var passed: bool = entered and _input_count == before and _started.has("T121")
-	passed = passed and _player.get_story_phase() == &"DONE" and _main._current_page == &"MapPage"
-	passed = passed and not _player.is_playing() and not _has_instruction(_main)
-	_check(passed, "r4_zero_input expected=MapPage T121_played=true input_delta=0 actual=%s input_delta=%d" %
+	passed = passed and _player.get_story_phase() == &"DONE" and GameState.state == GameState.State.S1
+	passed = passed and _main.get_node("Pages/ScenePage/FlowContent/Departure").is_visible_in_tree() and not _has_instruction(_main)
+	_check(passed, "r4_zero_input expected=S1 Departure T121_played=true input_delta=0 actual=%s input_delta=%d" %
 		[_main._current_page, _input_count - before])
 
 func _check_caption() -> void:
+	preload("res://scripts/prologue_test_context.gd").enter_domain(_main)
 	var caption_key: String = ""
 	for entry: Dictionary in _player.get_lines().values():
 		if entry.get("mode") == "caption":

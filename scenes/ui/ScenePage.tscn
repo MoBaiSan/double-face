@@ -1,8 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="1_font"]
 [ext_resource type="Script" path="res://scripts/page_nav.gd" id="2_nav"]
 [ext_resource type="Script" path="res://scripts/book_reading.gd" id="3_reading"]
+[ext_resource type="Script" path="res://scripts/prologue_scene.gd" id="4_content"]
+[ext_resource type="PackedScene" path="res://scenes/ui/DepartureScene.tscn" id="5_departure"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_placeholder"]
 bg_color = Color(0.94902, 0.921569, 0.839216, 1)
@@ -97,3 +99,13 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 script = ExtResource("2_nav")
+
+[node name="FlowContent" type="Control" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("4_content")
+
+[node name="Departure" parent="FlowContent" instance=ExtResource("5_departure")]

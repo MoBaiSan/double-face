@@ -18,6 +18,7 @@ var sample: float = 1.0
 var failures: int = 0
 var results: Dictionary = {}
 var snapshot: Array = []
+var _session: RefCounted
 var events: Array[int] = [0, 0, 0, 0, 0]
 var clean: bool = true
 static func start_once(root: Control) -> void:
@@ -55,6 +56,9 @@ func run(root: Control) -> void:
 	print("[SP-23] failures=%d" % failures)
 	tree.quit(0 if failures == 0 else 1)
 func _case(method: Callable, enter: bool = true, edits: Dictionary = {}) -> void:
+	_session = preload("res://scripts/prologue_test_context.gd").new()
+	_session.remember(tree.current_scene)
+	tree.current_scene.process_mode = Node.PROCESS_MODE_DISABLED
 	var focus: Control = tree.current_scene.get_viewport().gui_get_focus_owner()
 	snapshot = [GameState.vital_now, GameState.is_frozen(), GameState.is_processing(), weakref(focus) if focus != null else null, GameState.get_signal_connection_list("vital_changed")]
 	GameState.set_process(false)
@@ -63,6 +67,7 @@ func _case(method: Callable, enter: bool = true, edits: Dictionary = {}) -> void
 	GameState.set_frozen(false)
 	main = load("res://scenes/Main.tscn").instantiate()
 	tree.root.add_child(main)
+	_session.enter_domain(main)
 	b = main.get_node("Pages/BattlePage")
 	map = main.get_node("Pages/MapPage/MapArea/CursorContainer/MapGrid")
 	points = main.get_node("Overlay/Points")
@@ -102,15 +107,7 @@ func _cleanup() -> void:
 	main.queue_free()
 	await tree.process_frame
 	clean = clean and not is_instance_valid(main) and interactions.get_signal_connection_list("investigated").is_empty()
-	GameState.set_frozen(true)
-	GameState.vital_now = snapshot[0]
-	GameState.set_frozen(snapshot[1])
-	GameState.set_process(snapshot[2])
-	_restore_focus(snapshot[3])
-	clean = clean and GameState.vital_now == snapshot[0] and GameState.is_frozen() == snapshot[1]
-	clean = clean and GameState.is_processing() == snapshot[2] and GameState.get_drain_accum() == 0.0
-	clean = clean and GameState.get_signal_connection_list("vital_changed") == snapshot[4]
-	clean = clean and tree.current_scene.get_viewport().gui_get_focus_owner() == (snapshot[3].get_ref() if snapshot[3] != null else null)
+	clean = _session.restore() and clean
 func _restore_focus(reference: WeakRef) -> void:
 	var focus: Control = reference.get_ref() if reference != null else null
 	tree.current_scene.get_viewport().gui_release_focus()
@@ -174,7 +171,7 @@ func _driven() -> void:
 	b.advance_time(0.1)
 	ok = ok and b._enemy.get_node("Visual/EdgeNear").scale.is_equal_approx(Vector2(1.05, 1.05))
 	b.advance_time(0.49)
-	ok = ok and b.state == B.State.PLAYER_ACTION
+	ok = ok and b.turn_phase == B.State.PLAYER_ACTION
 	b.advance_time(0.01)
 	ok = ok and b.player_hp == 138
 	b.advance_time(0.6)
@@ -215,7 +212,7 @@ func _formula(value: float) -> void:
 	b.submit_command(0)
 	var expected: int = {0.9: 82, 1.0: 80, 1.1: 78}[value]
 	_check(b.enemy_hp == expected and b.player_hp == 100, "atk_formula")
-	_check(b.player_hp == 100 and b.state == B.State.PLAYER_ACTION, "player_before_enemy")
+	_check(b.player_hp == 100 and b.turn_phase == B.State.PLAYER_ACTION, "player_before_enemy")
 	b.advance_time(0.4)
 	_check(b.player_hp == expected and b.enemy_hp == expected, "enemy_atk_formula")
 	if value == 1.0:
@@ -272,7 +269,7 @@ func _input_timing() -> void:
 	for boundary: Array in [[0.29, B.State.PLAYER_ACTION], [0.01, B.State.ENEMY_ACTION],
 			[0.39, B.State.ENEMY_ACTION], [0.01, B.State.COMMAND]]:
 		b.advance_time(boundary[0])
-		_check(b.state == boundary[1] and b.turn_count == 1, "two_fixed_action_times")
+		_check(b.turn_phase == boundary[1] and b.turn_count == 1, "two_fixed_action_times")
 	_input(b._buttons[0])
 	_check(b.turn_count == 2 and b.enemy_hp == 60, "commands_keyboard_and_mouse")
 	_check(_locked(), "battle_navigation_locked")
@@ -288,7 +285,7 @@ func _motion() -> void:
 		_check(b._enemy.get_node("Visual/EdgeNear").scale.is_equal_approx(Vector2(1.03, 1.03)) and is_equal_approx(b._enemy.get_node("Visual").modulate.a, 0.97), "enemy_spread_then_contract")
 		b.advance_time(0.08)
 		_check(b._enemy.get_node("Visual/EdgeFar").scale == Vector2.ONE
-			and b._player.transform == b._origins[b._player] and b._enemy.transform == b._origins[b._enemy] and b.state != B.State.COMMAND, "feedback_returns_to_origin")
+			and b._player.transform == b._origins[b._player] and b._enemy.transform == b._origins[b._enemy] and b.turn_phase != B.State.COMMAND, "feedback_returns_to_origin")
 		if not enemy_turn:
 			b.advance_time(0.24)
 	var vital: float = GameState.vital_now
@@ -314,7 +311,7 @@ func _entry(mode: String) -> void:
 		"zero": [0, true, 0, "zero_vital_before_battle"], "unpaid": [5, false, 0, "point5_interrupt_or_unpaid_no_battle"],
 		"skip": [70, false, 0, "point5_interrupt_or_unpaid_no_battle"], "hide": [70, false, 0, "point5_interrupt_or_unpaid_no_battle"]}[mode]
 	_check(waiting and GameState.vital_now == expected[0] and map.get_interactable(&"point5").read == expected[1]
-		and b.start_count == expected[2] and GameState.is_frozen() == (mode == "finish") and main._current_page == (&"BattlePage" if mode == "finish" else &"MapPage"), expected[3])
+		and b.start_count == expected[2] and GameState.is_frozen() == (mode in ["finish", "zero"]) and (mode != "zero" or GameState.state == GameState.State.S5) and main._current_page == (&"BattlePage" if mode == "finish" else &"MapPage"), expected[3])
 	if mode == "zero":
 		_check(b._buttons[0].disabled and events[0] == 0, "zero_vital_before_battle")
 		_zero_reward()
@@ -370,7 +367,7 @@ func _defeat() -> void:
 	b.advance_time(4)
 	b._on_return_pressed()
 	b._on_return_pressed()
-	_check(b.state == B.State.DEFEATED and b.player_hp == 0 and events[1] == 1 and events[0] == 0 and b.turn_count == turns, "defeat_stops_without_reward")
+	_check(b.turn_phase == B.State.DEFEATED and b.player_hp == 0 and events[1] == 1 and events[0] == 0 and b.turn_count == turns, "defeat_stops_without_reward")
 	_check(_locked() and b._return.disabled and b.player_hp == 0 and events[0] == 0, "defeat_navigation_locked")
 func _zero_reward() -> void:
 	GameState.vital_now = 0
@@ -393,8 +390,8 @@ func _replace() -> void:
 	b.advance_time(0.4)
 	_check(shifted and b.enemy_hp == 80 and b.player_hp == 80 and b._enemy_bar.value == 80, "silhouettes_replaceable")
 func _preview() -> void:
-	_input(main.get_node("Overlay/PageSwitchBar/BattleButton"))
+	main.show_page(&"BattlePage")
 	_input(KEY_ENTER)
-	_check(main._current_page == &"BattlePage" and GameState.is_frozen() and b.start_count == 0 and b._buttons[0].disabled and b.turn_count == 0, "preview_does_not_start")
-	_input(KEY_PAGEUP)
+	_check(main._current_page == &"BattlePage" and GameState.state == GameState.State.S2 and not GameState.is_frozen() and b.start_count == 0 and b._buttons[0].disabled and b.turn_count == 0, "preview_does_not_start")
+	main.show_page(&"MapPage")
 	_check(main._current_page == &"MapPage" and not GameState.is_frozen(), "battle_navigation_locked")

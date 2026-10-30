@@ -3,6 +3,8 @@ extends Control
 
 signal line_started(key: String)
 signal sequence_finished(skipped: bool)
+signal stage_started(stage: StringName, session: int)
+signal stage_finished(stage: StringName, session: int)
 
 const LINES_PATH: String = "res://data/lines.json"
 const MODES: Array[String] = ["read", "auto", "caption"]
@@ -221,6 +223,7 @@ class S0Sequence extends RefCounted:
 	var _resume_vital: bool = false
 	var _resume_nav: bool = false
 	var _running: bool = false
+	var _run_id: int = GameState.run_id
 
 	func _init(player: Control, page: Control, switch_page: Callable) -> void:
 		_player = player
@@ -236,6 +239,8 @@ class S0Sequence extends RefCounted:
 			_player.sequence_finished.connect(_on_finished)
 
 	func _on_read_requested(node: Control) -> void:
+		if GameState.state != GameState.State.S0 or _player.is_playing():
+			return
 		if str(node.get_meta("interaction_id", "")) != "s0_old_speaker":
 			_placeholder.call(node)
 			return
@@ -251,10 +256,14 @@ class S0Sequence extends RefCounted:
 
 	func _start(next: StringName) -> void:
 		phase = next
+		_player.stage_started.emit(phase, _run_id)
 		_player.skip_allowed = phase == &"R2"
 		_player.play_seq(SEQUENCES[phase])
 
 	func _on_finished(_skipped: bool) -> void:
+		if _run_id != GameState.run_id:
+			return
+		_player.stage_finished.emit(phase, _run_id)
 		match phase:
 			&"READING":
 				_item.complete_reading()
@@ -267,7 +276,7 @@ class S0Sequence extends RefCounted:
 			&"R4":
 				phase = &"DONE"
 				_restore()
-				_switch_page.call(&"MapPage")
+				_switch_page.call(&"r4_finished", _run_id)
 
 	func _restore() -> void:
 		if not _running:

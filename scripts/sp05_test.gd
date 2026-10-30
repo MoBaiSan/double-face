@@ -42,6 +42,8 @@ func _on_frozen_changed(frozen: bool) -> void:
 
 
 func _run_self_test() -> void:
+	var saved: Dictionary = GameState.capture_session()
+	GameState.begin_session(GameState.State.S2)
 	var maximum: float = GameState.vital_max
 	var rate: float = GameState.get_knob("time_drain_per_second")
 	GameState.set_process(true)
@@ -63,6 +65,7 @@ func _run_self_test() -> void:
 	_test_freeze(maximum, rate)
 	_test_battle_win(maximum)
 	_test_display_floor(maximum)
+	GameState.begin_session(GameState.State.S0, saved)
 	print("[SP-05] failures=%d" % _failures)
 	get_tree().quit(0 if _failures == 0 else 1)
 

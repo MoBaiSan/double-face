@@ -31,6 +31,7 @@ var _move_ok: bool = true
 
 func run(main: Control, points: Node) -> int:
 	_main = main
+	var scope = preload("res://scripts/prologue_test_context.gd").component_scope(main, GameState.State.S2, false, false)
 	_points = points
 	_map = main.get_node("Pages/MapPage/MapArea/CursorContainer/MapGrid")
 	_dialogue = points.get_dialogue()
@@ -61,6 +62,7 @@ func run(main: Control, points: Node) -> int:
 	_map._interactions.repeated.disconnect(_on_repeated)
 	_dialogue.line_started.disconnect(_on_line)
 	print("[SP-09] failures=%d" % _failures)
+	scope.restore()
 	return _failures
 
 func _test_data() -> void:
@@ -117,6 +119,7 @@ func _changed(raw: Array, field: String, value: Variant) -> Array:
 	return result
 
 func _reset() -> void:
+	preload("res://scripts/prologue_test_context.gd").enter_domain(_main)
 	if _dialogue.is_playing():
 		_dialogue.skip()
 	_main.show_page(&"MapPage")
@@ -216,9 +219,7 @@ func _test_payment_failure() -> void:
 	GameState.set_frozen(true)
 	_key(KEY_ENTER)
 	_close()
-	_check(not _map.get_interactable(&"point1").read and _points.get_progress_count() == 0
-		and _investigated == 0 and not _dialogue.is_playing() and is_equal_approx(GameState.vital_now, before)
-		and GameState.get_point_pay_call_count() == calls + 1, "payment_failure_keeps_unread expected=no_read_no_progress_no_box")
+	_check(not _map.get_interactable(&"point1").read and _points.get_progress_count() == 0 and _investigated == 0 and not _dialogue.is_playing() and is_equal_approx(GameState.vital_now, before) and GameState.state == GameState.State.S2 and GameState.is_frozen() and GameState.get_point_pay_call_count() == calls, "payment_failure_keeps_unread expected=no_read_no_progress_no_box")
 	GameState.set_frozen(false)
 
 func _test_close_restores_input() -> void:

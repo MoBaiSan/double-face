@@ -55,7 +55,7 @@ func _process(delta: float) -> void:
 
 ## 按经过时间累积嗓子消耗；由自动处理或测试入口在非冻结期间调用。
 func drain_time(delta: float) -> void:
-	if _frozen or delta <= 0.0:
+	if _state not in [State.S2, State.S3] or _frozen or delta <= 0.0:
 		return
 	_drain_accum += delta * _knob("time_drain_per_second")
 	if _drain_accum < _knob("drain_flush_threshold"):
@@ -119,6 +119,8 @@ func is_frozen() -> bool:
 ## 结算战斗胜利回 10 点；战斗胜利事件发生时调用且自动截断上限。
 func on_battle_win() -> void:
 	var alive_before: bool = _vital_now > 0.0
+	if not alive_before:
+		return
 	_set_vital(_vital_now + _knob("battle_win_recovery"), &"battle_win")
 	if alive_before and _progress_valid and _p5_read:
 		_p5_won = true
@@ -171,6 +173,8 @@ func _set_vital(value: float, reason: StringName) -> void:
 		return
 	_vital_now = next_value
 	vital_changed.emit(_vital_now, vital_max, reason)
+	if _vital_now <= 0.0:
+		request_transition(&"failure")
 
 
 func _load_knobs() -> void:
@@ -219,7 +223,7 @@ func _complete_required(map_id: StringName) -> void:
 	progress_changed.emit(must_done, exit_open)
 
 func can_confirm_exit(at_entry: bool, map_active: bool) -> bool:
-	return exit_open and at_entry and map_active and not _frozen and _vital_now > 0.0 and not _exit_consumed
+	return _state == State.S3 and exit_open and at_entry and map_active and not _frozen and _vital_now > 0.0 and not _exit_consumed
 
 func try_confirm_exit(at_entry: bool, map_active: bool) -> bool:
 	if not can_confirm_exit(at_entry, map_active):
@@ -231,3 +235,135 @@ func try_confirm_exit(at_entry: bool, map_active: bool) -> bool:
 func _run_sp10_self_test() -> void:
 	await get_tree().process_frame
 	await load("res://scripts/sp10_selftest.gd").new().run(self)
+
+enum State { S0, S1, S2, S2B, S3, S4, S5, S6 }
+signal state_changed(from: int, to: int, reason: StringName, session: int)
+signal event_changed(id: StringName, completed: bool, session: int)
+var _state: State = State.S0
+var state: State:
+	get:
+		return _state
+var run_id: int = 0
+var presenter: Callable
+var battle_actor: WeakRef
+var _events: Dictionary = {}
+var _investigations: Dictionary = {}
+
+func begin_session(initial: State = State.S0, saved: Dictionary = {}) -> void:
+	if not saved.is_empty():
+		for key: String in saved:
+			set(key, saved[key])
+		return
+	run_id += 1
+	_state = initial
+	_events.clear()
+	_investigations.clear()
+	reset_progress()
+	_vital_now = vital_max
+	_drain_accum = 0.0
+	set_frozen(initial in [State.S2B, State.S4, State.S5])
+
+func capture_session() -> Dictionary:
+	var saved: Dictionary = {}
+	for key: String in ["_state", "run_id", "_events", "_investigations",
+		"_required_ids", "_completed_ids", "_progress_valid", "_p5_read", "_p5_won",
+		"_exit_consumed", "_vital_now", "_frozen", "_drain_accum", "presenter", "battle_actor"]:
+		var value: Variant = get(key)
+		saved[key] = value.duplicate(true) if value is Dictionary else value
+	return saved
+
+func can_map_action() -> bool:
+	return _state in [State.S2, State.S3] and not _frozen and _vital_now > 0.0
+
+func can_investigate() -> bool:
+	return can_map_action()
+
+func event_done(id: StringName) -> bool:
+	return int(_events.get(id, 0)) == 2
+
+func event_started(id: StringName) -> bool:
+	return _events.has(id)
+
+func record_event(id: StringName, completed: bool = false, session: int = -1) -> bool:
+	if session != -1 and session != run_id:
+		return false
+	if not _event_allowed(id):
+		return false
+	var value: int = 2 if completed else 1
+	if int(_events.get(id, 0)) >= value:
+		return false
+	_events[id] = value
+	event_changed.emit(id, completed, run_id)
+	return true
+
+func _event_allowed(id: StringName) -> bool:
+	match id:
+		&"E1": return _state == State.S0
+		&"E2": return _state == State.S0 and event_done(&"E1")
+		&"E3": return _state == State.S0 and event_done(&"E2")
+		&"E4": return _state == State.S0 and event_done(&"E3")
+		&"E5": return _state == State.S1
+		&"E6": return can_investigate()
+		&"E7": return _state == State.S3 and exit_open
+		&"E8": return _state == State.S3 and _exit_consumed
+		&"E9": return _state == State.S4
+		&"E10": return _state == State.S5
+		&"E11": return _state == State.S2
+		&"E12", &"E13": return _state == State.S6
+		&"E14": return _state == State.S6 and event_done(&"E12")
+		&"E15", &"E16", &"E17": return _state == State.S2B
+	return false
+
+func record_investigation(id: StringName, session: int) -> bool:
+	if session != run_id or not can_investigate() or _investigations.has(id):
+		return false
+	_investigations[id] = true
+	_events[&"E6"] = 2
+	event_changed.emit(&"E6", true, run_id)
+	return true
+
+func request_transition(reason: StringName, session: int = -1) -> bool:
+	if (session != -1 and session != run_id) or not presenter.is_valid():
+		return false
+	var target: int = _transition_target(reason)
+	if target < 0:
+		return false
+	var previous: State = _state
+	var frozen_before: bool = _frozen
+	var accumulated: float = _drain_accum
+	_state = target as State
+	if not _state in [State.S2, State.S3]:
+		set_frozen(true)
+	set_frozen(_state in [State.S2B, State.S4, State.S5])
+	if not presenter.call(_state):
+		_state = previous
+		set_frozen(frozen_before)
+		_drain_accum = accumulated
+		return false
+	state_changed.emit(previous, _state, reason, run_id)
+	return true
+
+func _transition_target(reason: StringName) -> int:
+	if reason == &"failure" and _state in [State.S2, State.S2B, State.S3]:
+		var actor: Node = battle_actor.get_ref() if battle_actor != null else null
+		if _vital_now <= 0.0 or (_state == State.S2B and actor != null and actor.player_hp <= 0):
+			return State.S5
+	if _vital_now <= 0.0:
+		return -1
+	match reason:
+		&"r4_finished":
+			if _state == State.S0 and event_done(&"E4"): return State.S1
+		&"first_step":
+			if _state == State.S1 and event_done(&"E5"): return State.S2
+		&"battle_started":
+			if _state == State.S2 and _p5_read: return State.S2B
+		&"battle_return":
+			if _state == State.S2B and event_done(&"E17"): return State.S2
+		&"investigation_complete":
+			if _state == State.S2 and exit_open: return State.S3
+		&"exit":
+			if _state == State.S3 and event_done(&"E8"): return State.S4
+		&"r10_finished":
+			if _state == State.S4 and event_done(&"E9"): return State.S6
+	return -1
+

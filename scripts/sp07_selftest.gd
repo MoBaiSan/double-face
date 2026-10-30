@@ -11,6 +11,7 @@ var _repeated: int = 0
 
 func run(main: Control) -> int:
 	_main = main
+	var scope = preload("res://scripts/prologue_test_context.gd").component_scope(main, GameState.State.S0)
 	await main.get_tree().process_frame
 	await main.get_tree().process_frame
 	GameState.set_process(false)
@@ -27,6 +28,7 @@ func run(main: Control) -> int:
 	_test_map_investigation()
 	_test_all_points()
 	print("[SP-07] failures=%d" % _failures)
+	scope.restore()
 	return _failures
 
 func _test_shared_implementation() -> void:
@@ -144,6 +146,7 @@ func _mount_book(path: String) -> Control:
 	await _main.get_tree().process_frame
 	return page
 func _test_map_investigation() -> void:
+	preload("res://scripts/prologue_test_context.gd").enter_domain(_main)
 	_main.show_page(&"MapPage")
 	GameState.set_frozen(false)
 	_map.reset_map()

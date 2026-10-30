@@ -65,7 +65,7 @@ func reset_map() -> void:
 	queue_redraw()
 ## 地图移动统一入口：首次成功到达扣步费，回访免费，冻结或归零始终拒绝。
 func try_move_to(node_id: StringName) -> bool:
-	if GameState.is_frozen() or GameState.vital_now <= 0.0:
+	if not GameState.can_map_action():
 		return false
 	if not _points.has(node_id) or not _revealed.has(node_id):
 		return false
@@ -102,6 +102,8 @@ func get_hovered_node_id() -> StringName:
 	return _hovered_id
 ## 返回当前确认候选；没有候选时确认静默失败。
 func confirm_selection() -> bool:
+	if not GameState.can_investigate():
+		return false
 	if _pending_id == &"":
 		if _current_id == _start_id:
 			return _confirm_exit()

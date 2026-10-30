@@ -3,6 +3,7 @@ extends Control
 
 signal battle_started
 signal battle_lost
+signal incoming_damage(product: float, hp: int, maximum: int)
 
 enum State { INACTIVE, COMMAND, PLAYER_ACTION, ENEMY_ACTION, VICTORY, DEFEATED }
 const KNOBS_PATH: String = "res://data/knobs.json"
@@ -27,12 +28,13 @@ const EPSILON: float = 1e-6
 	$CommandWindow/MarginContainer/GridContainer/Charge,
 	$CommandWindow/MarginContainer/GridContainer/Guard,
 	$CommandWindow/MarginContainer/GridContainer/Item]
-var state: State = State.INACTIVE
+var turn_phase: State = State.INACTIVE
 var player_hp: int = 0
 var enemy_hp: int = 0
 var item_uses: int = 0
 var turn_count: int = 0
 var start_count: int = 0
+var _run_id: int = -1
 var elapsed: float = 0.0
 var random_sample: Callable
 var last_error: String = ""
@@ -114,16 +116,16 @@ func configure(main: Control) -> void:
 	if OS.get_cmdline_user_args().has("--sp23-self-test"):
 		load("res://scripts/sp23_selftest.gd").start_once(main)
 	_main = main
+	_run_id = GameState.run_id
 	_map = main.get_node("Pages/MapPage/MapArea/CursorContainer/MapGrid")
 	_points = main.get_node_or_null("Overlay/Points")
-	for argument: String in OS.get_cmdline_user_args():
-		if argument in COMPONENT_TESTS:
-			return
 	_interactions = _map._interactions
 	if not _interactions.investigated.is_connected(_on_investigated):
 		_interactions.investigated.connect(_on_investigated)
 
 func _on_investigated(point_id: StringName) -> void:
+	if _run_id != GameState.run_id or not GameState.can_investigate():
+		return
 	if point_id != &"point5" or _started or not _valid or GameState.vital_now <= 0.0:
 		return
 	if _main == null or _main._current_page != &"MapPage" or _points == null:
@@ -134,24 +136,28 @@ func _on_investigated(point_id: StringName) -> void:
 		return
 	_started = true
 	start_count += 1
-	state = State.COMMAND
-	_main.show_page(&"BattlePage")
+	turn_phase = State.COMMAND
+	if not GameState.request_transition(&"battle_started", _run_id):
+		_started = false
+		start_count -= 1
+		turn_phase = State.INACTIVE
+		return
 	_sync_controls(true)
 	battle_started.emit()
 
 ## Main 的所有翻页入口共同经过此守卫；返回令牌在消费前就锁存。
 func can_show_page(page_name: StringName) -> bool:
-	if _main == null or state == State.INACTIVE:
+	if _main == null or turn_phase == State.INACTIVE:
 		return true
 	if page_name == &"BattlePage":
 		return true
-	if state == State.VICTORY and _return_permit and page_name == &"MapPage":
+	if turn_phase == State.VICTORY and _return_permit and page_name == &"MapPage":
 		_return_permit = false
 		return true
 	return false
 
 func submit_command(index: int) -> void:
-	if state != State.COMMAND or not _valid or not is_visible_in_tree():
+	if turn_phase != State.COMMAND or not _valid or not is_visible_in_tree():
 		return
 	if GameState.vital_now <= 0.0:
 		_defeat()
@@ -160,7 +166,7 @@ func submit_command(index: int) -> void:
 		return
 	_selected = index
 	turn_count += 1
-	state = State.PLAYER_ACTION
+	turn_phase = State.PLAYER_ACTION
 	elapsed = 0.0
 	_received_multiplier = 1.0
 	var attack_multiplier: float = _k("charge_attack_multiplier") if _charged else 1.0
@@ -193,10 +199,10 @@ func _process(delta: float) -> void:
 func advance_time(delta: float) -> void:
 	if not _valid or delta <= 0.0 or not is_finite(delta):
 		return
-	if state == State.DEFEATED:
+	if turn_phase == State.DEFEATED:
 		_advance_feedback(delta)
 		return
-	if state not in [State.PLAYER_ACTION, State.ENEMY_ACTION, State.VICTORY]:
+	if turn_phase not in [State.PLAYER_ACTION, State.ENEMY_ACTION, State.VICTORY]:
 		return
 	if GameState.vital_now <= 0.0:
 		_defeat()
@@ -205,11 +211,11 @@ func advance_time(delta: float) -> void:
 	_advance_feedback(delta)
 	if elapsed + EPSILON < _k("action_seconds"):
 		return
-	match state:
+	match turn_phase:
 		State.PLAYER_ACTION:
 			_enemy_action()
 		State.ENEMY_ACTION:
-			state = State.COMMAND
+			turn_phase = State.COMMAND
 			elapsed = 0.0
 			_sync_controls(true)
 		State.VICTORY:
@@ -218,9 +224,11 @@ func advance_time(delta: float) -> void:
 			_sync_controls()
 
 func _enemy_action() -> void:
-	state = State.ENEMY_ACTION
+	turn_phase = State.ENEMY_ACTION
 	elapsed = 0.0
-	player_hp = maxi(0, player_hp - roundi(_k("enemy_attack") * _roll() * _received_multiplier))
+	var product: float = _k("enemy_attack") * _roll() * _received_multiplier
+	incoming_damage.emit(product, player_hp, int(_k("player_hp_max")))
+	player_hp = maxi(0, player_hp - roundi(product))
 	if player_hp == 0:
 		_defeat()
 	else:
@@ -231,15 +239,16 @@ func _settle_victory() -> void:
 	if _settled or not _started or enemy_hp != 0 or player_hp <= 0:
 		return
 	_settled = true
-	state = State.VICTORY
+	turn_phase = State.VICTORY
 	_start_feedback(0, false)
 	if GameState.vital_now > 0.0:
 		GameState.on_battle_win()
+		GameState.record_event(&"E17", false, _run_id)
 
 func _defeat() -> void:
-	if state == State.DEFEATED or _returned:
+	if turn_phase == State.DEFEATED or _returned:
 		return
-	state = State.DEFEATED
+	turn_phase = State.DEFEATED
 	_settled = true
 	if player_hp <= 0:
 		_start_feedback(0, true)
@@ -249,14 +258,15 @@ func _defeat() -> void:
 	battle_lost.emit()
 
 func _on_return_pressed() -> void:
-	if state != State.VICTORY or _returned or GameState.vital_now <= 0.0:
+	if turn_phase != State.VICTORY or _returned or GameState.vital_now <= 0.0:
 		return
 	if elapsed + EPSILON < _k("action_seconds"):
 		return
 	_returned = true
 	_return_permit = true
-	if _main.show_page(&"MapPage"):
-		state = State.INACTIVE
+	if _main._flow.return_from_battle():
+		turn_phase = State.INACTIVE
+		_main._flow._on_progress(GameState.must_done, GameState.exit_open)
 	_return_permit = false
 	_sync_controls()
 
@@ -268,10 +278,10 @@ func _refresh_display() -> void:
 	_sync_controls()
 
 func _sync_controls(focus_command: bool = false) -> void:
-	var available: bool = _valid and state == State.COMMAND and is_visible_in_tree() and GameState.vital_now > 0.0
+	var available: bool = _valid and turn_phase == State.COMMAND and is_visible_in_tree() and GameState.vital_now > 0.0
 	for index: int in range(_buttons.size()):
 		_buttons[index].disabled = not available or (index == 3 and item_uses <= 0)
-	_return.visible = _valid and state == State.VICTORY and elapsed + EPSILON >= _k("action_seconds")
+	_return.visible = _valid and turn_phase == State.VICTORY and elapsed + EPSILON >= _k("action_seconds")
 	_return.disabled = not _return.visible or _returned or GameState.vital_now <= 0.0
 	var focused: Control = get_viewport().gui_get_focus_owner()
 	if focused != null and is_ancestor_of(focused) and (not available or not is_visible_in_tree()):

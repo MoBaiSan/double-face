@@ -28,6 +28,7 @@ var _main_scene_unchanged: bool = true
 var _sp04_failures: int = 0
 var _force_layout_fail: bool = false
 var _dialogue: Control
+var _flow: Node
 func _ready() -> void:
 	for page_name: StringName in PAGE_NAMES:
 		var page: Control = _pages_root.get_node_or_null(NodePath(page_name)) as Control
@@ -39,10 +40,9 @@ func _ready() -> void:
 	_connect_page_nav(_book_page)
 	for page_name: StringName in PAGE_NAMES:
 		_connect_page_nav(_pages[page_name] as Control)
-	_page_switch_bar.configure(show_page)
+	_page_switch_bar.configure(func(page: StringName): return _flow.request_page(page))
 	show_page(PAGE_NAMES[0])
 	_setup_dialogue()
-	$Pages/BattlePage.configure(self)
 	print("[godot-project] ready")
 	if DisplayServer.get_name() == "headless":
 		var user_args: PackedStringArray = OS.get_cmdline_user_args()
@@ -81,21 +81,18 @@ func _print_sp04_demo(prefix: String, bar: VitalBar) -> void:
 		prefix, bar.get_flash_count(), bar.get_fill_top(), str(bar.size.y > bar.size.x)])
 ## 显示指定常驻页并切换空数据引用；未知页返回 false 且不改变当前页。
 func show_page(name: StringName) -> bool:
+	if _flow != null and not _flow.presenting and GameState.state in [GameState.State.S4, GameState.State.S5, GameState.State.S6] and name != _current_page:
+		return false
 	if not _pages.has(name):
 		return false
 	if not $Pages/BattlePage.can_show_page(name):
 		return false
-	var was_battle: bool = _current_page == &"BattlePage"
 	if name != _current_page:
 		for page_name: StringName in PAGE_NAMES:
 			_set_page_active(_pages[page_name] as Control, page_name == name)
 	_current_page = name
 	_current_data = _page_data[name]
 	_page_switch_bar.refresh(name)
-	if name == &"BattlePage" and not was_battle:
-		GameState.enter_battle()
-	elif was_battle and name != &"BattlePage":
-		GameState.exit_battle()
 	return true
 ## 必须先暂停再隐藏，否则既有导航的逐帧同步会丢掉当前候选。
 func _set_page_active(page: Control, active: bool) -> void:
@@ -126,7 +123,7 @@ func _turn_page(direction: int) -> void:
 	if current_index < 0:
 		return
 	var next_index: int = posmod(current_index + direction, PAGE_NAMES.size())
-	show_page(PAGE_NAMES[next_index])
+	_flow.request_page(PAGE_NAMES[next_index])
 func _run_sp04_self_test() -> void:
 	if not await _wait_for_layout():
 		var failures_before_wait: int = _sp04_failures
@@ -135,6 +132,7 @@ func _run_sp04_self_test() -> void:
 		print("[SP-04] failures=%d" % _sp04_failures)
 		get_tree().quit(1)
 		return
+	var scope = preload("res://scripts/prologue_test_context.gd").component_scope(self, GameState.State.S0, true)
 	var bar: VitalBar = _throat_placeholder
 	var initial_flash_count: int = bar.get_flash_count()
 	for index: int in range(SP04_VALUES.size()):
@@ -156,6 +154,7 @@ func _run_sp04_self_test() -> void:
 	_sp04_check(bar.global_position.x >= 1180.0, "left_boundary")
 	_sp04_check(initial_flash_count == 0, "normal_start_no_flash")
 	print("[SP-04] failures=%d" % _sp04_failures)
+	scope.restore()
 	get_tree().quit(0 if _sp04_failures == 0 else 1)
 func _sp04_state_matches(bar: VitalBar, index: int) -> bool:
 	var expected_value: float = SP04_VALUES[index]
@@ -193,6 +192,7 @@ func _run_self_test() -> void:
 		print("[SP-03] failures=%d" % _failures)
 		get_tree().quit(1)
 		return
+	var scope = preload("res://scripts/prologue_test_context.gd").component_scope(self, GameState.State.S0, true)
 	_original_scene = get_tree().current_scene
 	_observe_main_scene()
 	var option_label: Label = $Pages/ScenePage/TestOptions/OptionOne/Text
@@ -211,6 +211,7 @@ func _run_self_test() -> void:
 	print("[SP-03] current_scene=%s" % path)
 	_check(_main_scene_unchanged, "5 main_scene unchanged: %s" % path)
 	print("[SP-03] failures=%d" % _failures)
+	scope.restore()
 	get_tree().quit(0 if _failures == 0 else 1)
 func _wait_for_layout() -> bool:
 	if _force_layout_fail:
@@ -244,26 +245,31 @@ func _active_navigation_count() -> int:
 			count += 1
 	return count
 func _test_battle_freeze_boundaries() -> void:
-	show_page(&"ScenePage")
-	GameState.set_process(false)
-	GameState.exit_battle()
-	GameState.vital_now = GameState.vital_max
-	GameState.drain_time(0.25)
-	GameState.enter_battle()
+	var context = preload("res://scripts/prologue_test_context.gd")
+	context.enter_domain(self, GameState.State.S2)
+	GameState.drain_time(0.05)
+	context.enter_domain(self, GameState.State.S2B)
 	var entered: bool = GameState.is_frozen() and is_zero_approx(GameState.get_drain_accum())
 	_check(entered, "freeze_on_enter_battle frozen=true accum=0")
 	show_page(&"MapPage")
 	var survived_map_switch: bool = GameState.is_frozen()
 	show_page(&"BattlePage")
 	var survived_battle_return: bool = GameState.is_frozen()
-	_check(survived_map_switch and survived_battle_return,
-		"freeze_survives_page_switch map=true battle=true")
-	GameState.exit_battle()
+	context.enter_domain(self, GameState.State.S5)
+	var before: float = GameState.vital_now
+	GameState.drain_time(60.0)
+	_check(survived_map_switch and survived_battle_return and GameState.vital_now == before,
+		"freeze_survives_page_switch S2b_and_S5=true")
+	context.enter_domain(self, GameState.State.S2)
 	var drain_probe: float = GameState.get_knob("drain_flush_threshold") / GameState.get_knob("time_drain_per_second") * 0.5
 	GameState.drain_time(drain_probe)
 	var unfrozen_drains: bool = not GameState.is_frozen() and GameState.get_drain_accum() > 0.0
 	_check(unfrozen_drains, "unfreeze_on_exit_battle frozen=false drains=true")
+	context.enter_domain(self, GameState.State.S0)
+	GameState.record_event(&"E1", true)
+	$Pages/ScenePage/FlowContent.present(GameState.state)
 	show_page(&"ScenePage")
+
 func _test_hidden_nav_does_not_consume() -> void:
 	show_page(&"BattlePage")
 	_scene_nav.set_process_input(true)
@@ -377,21 +383,9 @@ func _run_sp07_self_test() -> void:
 	get_tree().quit(0 if failures == 0 else 1)
 
 func _setup_dialogue() -> void:
-	_dialogue = preload("res://scenes/ui/DialogueBox.tscn").instantiate()
-	$Overlay.add_child(_dialogue)
-	var args: PackedStringArray = OS.get_cmdline_user_args()
-	var component_test: bool = false
-	for argument: String in args:
-		if argument in ["--sp03-self-test", "--sp04-self-test", "--sp05-self-test", "--sp06-self-test", "--sp07-self-test"]:
-			component_test = true
-	if not component_test:
-		_dialogue.bind_s0(_pages[&"ScenePage"], show_page)
-		var points: Node = preload("res://scripts/points.gd").new()
-		$Overlay.add_child(points)
-		points.configure(self, _dialogue)
-		_pages[&"MapPage"].get_node("MapArea/CursorContainer/MapGrid").bind_progress(points)
-	if DisplayServer.get_name() == "headless" and args.has("--sp11-self-test"):
-		call_deferred("_run_sp11_self_test")
+	_flow = preload("res://scripts/prologue_flow.gd").new()
+	add_child(_flow)
+	_flow.configure(self)
 
 func _run_sp11_self_test() -> void:
 	var failures: int = await preload("res://scripts/sp11_selftest.gd").new().run(self, _dialogue)

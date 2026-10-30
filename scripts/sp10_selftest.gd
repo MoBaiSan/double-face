@@ -145,19 +145,23 @@ func _full_win() -> void:
 	_return()
 	_check(18, h.map.get_current_node_id() == &"point5" and h.map.get_step_count() == steps and _hint() == "该回去了", "手动返回原点5并提示")
 	await _normal_return()
+	var kept: bool = _pre_exit_revisit()
 	var before: Array = [exits, GameState.vital_now]
 	_check(28, h.map.confirm_selection() and exits == before[0] + 1, "入口首次确认恰好一次")
 	var consumed: Array = [exits, GameState.vital_now]
 	var denied: bool = not h.map.confirm_selection()
 	_button().pressed.emit()
 	_check(29, denied and [exits, GameState.vital_now] == consumed, "重复确认与点击不重复离场")
+	_check(31, kept and GameState.state == GameState.State.S4 and not h.main.show_page(&"MapPage") and exits == consumed[0], "离场前回访保留进度，离场后S4不可绕回")
+
+func _pre_exit_revisit() -> bool:
 	var visited: Dictionary = h.map._visited.duplicate()
 	h.main.show_page(&"ScenePage")
 	h.main.show_page(&"MapPage")
 	_walk([&"c1", &"point1"])
 	h._read()
 	_walk([&"c1", &"entry_exit"])
-	_check(31, GameState.must_done == 5 and h.map._visited == visited and not h.map.confirm_selection() and exits == consumed[0], "翻页回访调查保留进度与出口消费")
+	return GameState.must_done == 5 and h.map._visited == visited and not GameState._exit_consumed
 
 func _normal_return() -> void:
 	var start_steps: int = h.map.get_step_count()
@@ -170,6 +174,7 @@ func _normal_return() -> void:
 	var total: int = h.map.get_step_count()
 	await h.tree.process_frame
 	_check(27, total - start_steps == GameState.NORMAL_RETURN_STEPS and h.map.get_step_count() == total and GameState.vital_now == start_vital, "六次手动移动、零步费、空帧不代走")
+	var exit_context: Dictionary = GameState.capture_session()
 	var page: Control = h.main.get_node("Pages/MapPage")
 	page.hide()
 	var denied: bool = not h.map.confirm_selection()
@@ -179,8 +184,9 @@ func _normal_return() -> void:
 	GameState.set_frozen(false)
 	GameState.vital_now = 0.0
 	denied = not h.map.confirm_selection() and denied and _hint() == ""
-	GameState.vital_now = start_vital
 	_check(30, denied, "隐藏/冻结/归零均拒绝出口")
+	GameState.begin_session(GameState.State.S3, exit_context)
+	h.main._flow._present(GameState.state)
 
 func _early_win() -> void:
 	_walk(FIXTURE.ROUTE)
@@ -208,11 +214,11 @@ func _defeat_reset() -> void:
 	h._read()
 	h.b.player_hp = 10
 	h._turn(0)
-	_check(13, h.b.state == h.B.State.DEFEATED and GameState.must_done == 0 and not GameState.exit_open and _hint() == "", "败态不完成、不提示成功")
+	_check(13, h.b.turn_phase == h.B.State.DEFEATED and GameState.must_done == 0 and not GameState.exit_open and _hint() == "", "败态不完成、不提示成功")
 	var started: int = h.b.start_count
 	h.map.reset_map()
 	h.main.show_page(&"MapPage")
-	_check(32, GameState.must_done == 0 and not GameState.exit_open and h.map._visited == {&"entry_exit": true} and h.b.start_count == started and h.b.state == h.B.State.DEFEATED and h.main._current_page == &"BattlePage", "reset只清数据、不解败态或战斗单场标记")
+	_check(32, GameState.must_done == 0 and not GameState.exit_open and h.map._visited == {&"entry_exit": true} and h.b.start_count == started and h.b.turn_phase == h.B.State.DEFEATED and h.main._current_page == &"BattlePage", "reset只清数据、不解败态或战斗单场标记")
 func _zero() -> void:
 	_walk(FIXTURE.ROUTE)
 	GameState.vital_now = GameState.get_knob("required_point_cost")
@@ -261,6 +267,7 @@ func _move_guards() -> void:
 	GameState.vital_now = 0.0
 	denied = not h.map.try_move_to(&"c1") and denied
 	_check(41, denied and h.map.get_current_node_id() == before[0], "免费回访仍拒绝冻结/归零")
+	preload("res://scripts/prologue_test_context.gd").enter_domain(h.main, GameState.State.S2)
 	h.map.reset_map()
 	GameState.vital_now = 0.5
 	denied = not h.map.try_move_to(&"c1") and not h.map._visited.has(&"c1")
@@ -314,6 +321,9 @@ func _click_exit() -> void:
 	_check(47, _exit_rects_clear(button), "exit_button_not_covered")
 	var before: int = exits
 	var page_before: StringName = h.main._current_page
+	var page_presses: Array = [0]
+	for button_node: Button in h.main.get_node("Overlay/PageSwitchBar")._buttons:
+		button_node.pressed.connect(func(): page_presses[0] += 1)
 	var center: Vector2 = button.get_global_rect().get_center()
 	for pressed: bool in [true, false]:
 		var event: InputEventMouseButton = InputEventMouseButton.new()
@@ -323,7 +333,7 @@ func _click_exit() -> void:
 		event.position = center
 		event.global_position = center
 		h.main.get_viewport().push_input(event, true)
-	_check(48, exits == before + 1 and page_before == &"MapPage" and h.main._current_page == page_before and h.map.is_visible_in_tree(), "exit_button_real_click_confirms")
+	_check(48, exits == before + 1 and page_before == &"MapPage" and GameState.state == GameState.State.S4 and h.main._current_page == &"ScenePage" and h.main._dialogue.get_current_key() == "T161" and page_presses[0] == 0, "exit_button_real_click_confirms")
 
 func _exit_rects_clear(button: Button) -> bool:
 	var exit_rect: Rect2 = button.get_global_rect()
