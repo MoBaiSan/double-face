@@ -18,6 +18,9 @@ var watched: Array = []
 var events: Array = []
 var transitions: Array = []
 var restored: bool = false
+var _component_connections: Array = []
+var _component_interactions: RefCounted
+var _investigation_before: Callable
 
 func remember(host: Control) -> void:
 	root = host
@@ -178,6 +181,7 @@ func close() -> bool:
 	return restore()
 
 func restore() -> bool:
+	var components_restored: bool = _restore_component_callbacks()
 	if root.has_meta("production_flow"):
 		root._flow.queue_free()
 		root._flow = root.get_meta("production_flow")
@@ -190,10 +194,35 @@ func restore() -> bool:
 	var owner: Control = focus.get_ref() if focus != null else null
 	if is_instance_valid(owner) and owner.is_visible_in_tree() and owner.focus_mode != Control.FOCUS_NONE:
 		owner.grab_focus()
-	restored = GameState.capture_session() == saved and GameState.is_processing() == process_before
+	restored = components_restored and GameState.capture_session() == saved and GameState.is_processing() == process_before
 	for id: StringName in connections:
 		restored = restored and connections[id] == GameState.get_signal_connection_list(id)
 	return restored and root.get_viewport().gui_get_focus_owner() == owner
+
+## 只由组件夹具记录它即将替换的接线；普通新实例夹具没有这些恢复项。
+func _remember_component_callbacks(nav: Control) -> void:
+	_component_interactions = map._interactions
+	_investigation_before = _component_interactions.request_investigation
+	for event: Signal in [nav.reading_requested, _component_interactions.investigated]:
+		_component_connections.append([event, event.get_connections()])
+
+func _restore_component_callbacks() -> bool:
+	if _component_connections.is_empty():
+		return true
+	if not is_instance_valid(_component_interactions):
+		return false
+	_component_interactions.request_investigation = _investigation_before
+	var matched: bool = _component_interactions.request_investigation == _investigation_before
+	for binding: Array in _component_connections:
+		var event: Signal = binding[0]
+		if not is_instance_valid(event.get_object()):
+			return false
+		for connection: Dictionary in event.get_connections():
+			event.disconnect(connection.callable)
+		for connection: Dictionary in binding[1]:
+			event.connect(connection.callable, connection.flags)
+		matched = matched and event.get_connections() == binding[1]
+	return matched
 
 static func component_scope(host: Control, initial: int = S.S2, renderer: bool = false, legacy_map: bool = true):
 	var scope = load("res://scripts/prologue_test_context.gd").new()
@@ -201,6 +230,7 @@ static func component_scope(host: Control, initial: int = S.S2, renderer: bool =
 	scope.attach(host)
 	enter_domain(host, initial)
 	var nav: Control = host.get_node("Pages/ScenePage/PageNav")
+	scope._remember_component_callbacks(nav)
 	nav.reading_requested.disconnect(host._dialogue._s0._on_read_requested)
 	nav.reading_requested.connect(host._dialogue._s0._placeholder)
 	if initial == S.S0:
@@ -224,4 +254,3 @@ class RenderOnly extends Node:
 	var presenting: bool = true
 	func request_page(page: StringName) -> bool:
 		return host.show_page(page)
-

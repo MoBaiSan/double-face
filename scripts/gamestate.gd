@@ -77,14 +77,16 @@ func pay_point(kind: StringName) -> bool:
 	_point_pay_calls += 1
 	if _frozen:
 		return false
-	var knob_name: String = ""
+	var cost: float = get_point_cost(kind)
+	return cost >= 0.0 and _spend(cost, &"point_" + kind)
+
+## 调查校验与支付共用当前旋钮；未知类型返回负值，不能作为免费调查。
+func get_point_cost(kind: StringName) -> float:
 	if kind == REQUIRED_KIND:
-		knob_name = "required_point_cost"
-	elif kind == OPTIONAL_KIND:
-		knob_name = "optional_point_cost"
-	else:
-		return false
-	return _spend(_knob(knob_name), &"point_" + kind)
+		return _knob("required_point_cost")
+	if kind == OPTIONAL_KIND:
+		return _knob("optional_point_cost")
+	return -1.0
 
 
 ## 切换战斗冻结状态；进入冻结时清掉未结算时间累积并通知界面。
@@ -368,4 +370,3 @@ func _transition_target(reason: StringName) -> int:
 		&"r10_finished":
 			if _state == State.S4 and event_done(&"E9"): return State.S6
 	return -1
-

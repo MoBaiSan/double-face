@@ -46,6 +46,7 @@ func run(main: Control, points: Node) -> int:
 	_dialogue.line_started.connect(_on_line)
 	_test_data()
 	_test_schema()
+	preload("res://scripts/p2_selftest.gd").point_costs(main, _check)
 	_reset()
 	for index: int in range(7):
 		await _test_real_point(index)

@@ -102,7 +102,10 @@ func register_selectable(node: Control) -> void:
 func unregister_selectable(node: Control) -> void:
 	if not is_instance_valid(node):
 		return
-	_disconnect_candidate(node)
+	if _outlines.has(node.get_instance_id()):
+		_release_outline(node.get_instance_id())
+	else:
+		_disconnect_candidate(node)
 	node.remove_from_group(SELECTABLE_GROUP)
 	_sync_candidates()
 

@@ -97,7 +97,7 @@ static func _validate_entry(entry: Variant, source_lines: Dictionary) -> String:
 		return "调查点 kind 非法：%s" % id
 	if not (entry["cost"] is int or entry["cost"] is float):
 		return "调查点 cost 必须是数值：%s" % id
-	if entry["cost"] != (6 if required else 4):
+	if entry["cost"] != GameState.get_point_cost(GameState.REQUIRED_KIND if required else GameState.OPTIONAL_KIND):
 		return "调查点 cost 与 kind 不一致：%s" % id
 	if not entry["progress"] is bool or entry["progress"] != required:
 		return "调查点 progress 与必查/可选不一致：%s" % id

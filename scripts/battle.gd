@@ -48,7 +48,6 @@ var _interactions: RefCounted
 var _started: bool = false
 var _settled: bool = false
 var _returned: bool = false
-var _return_permit: bool = false
 var _charged: bool = false
 var _received_multiplier: float = 1.0
 var _selected: int = 0
@@ -148,17 +147,6 @@ func _on_investigated(point_id: StringName) -> void:
 		return
 	_sync_controls(true)
 	battle_started.emit()
-
-## Main 的所有翻页入口共同经过此守卫；返回令牌在消费前就锁存。
-func can_show_page(page_name: StringName) -> bool:
-	if _main == null or turn_phase == State.INACTIVE:
-		return true
-	if page_name == &"BattlePage":
-		return true
-	if turn_phase == State.VICTORY and _return_permit and page_name == &"MapPage":
-		_return_permit = false
-		return true
-	return false
 
 func submit_command(index: int) -> void:
 	if turn_phase != State.COMMAND or not _valid or not is_visible_in_tree():
@@ -267,11 +255,9 @@ func _on_return_pressed() -> void:
 	if elapsed + EPSILON < _k("action_seconds"):
 		return
 	_returned = true
-	_return_permit = true
 	if _main._flow.return_from_battle():
 		turn_phase = State.INACTIVE
 		_main._flow._on_progress(GameState.must_done, GameState.exit_open)
-	_return_permit = false
 	_sync_controls()
 
 func _refresh_display() -> void:

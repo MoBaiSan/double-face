@@ -273,7 +273,7 @@ func _input_timing() -> void:
 	_input(b._buttons[0])
 	_check(b.turn_count == 2 and b.enemy_hp == 60, "commands_keyboard_and_mouse")
 	var battle_before: Array = [b.get_instance_id(), GameState.state, b.turn_phase, b.turn_count, b.enemy_hp, b.player_hp, b.elapsed, b._buttons.map(func(button: Button): return button.disabled)]
-	_check(main.get_node("Overlay/PageSwitchBar")._real_page_cycle(main) and battle_before == [main.get_node("Pages/BattlePage").get_instance_id(), GameState.state, b.turn_phase, b.turn_count, b.enemy_hp, b.player_hp, b.elapsed, b._buttons.map(func(button: Button): return button.disabled)] and GameState.is_frozen(), "battle_navigation_locked")
+	_check(main.get_node("Overlay/PageSwitchBar")._real_page_cycle(main) and battle_before == [main.get_node("Pages/BattlePage").get_instance_id(), GameState.state, b.turn_phase, b.turn_count, b.enemy_hp, b.player_hp, b.elapsed, b._buttons.map(func(button: Button): return button.disabled)] and GameState.is_frozen(), "battle_pages_free_preserve_state")
 func _motion() -> void:
 	var frame: int = Engine.get_process_frames()
 	b.submit_command(0)
@@ -396,4 +396,4 @@ func _preview() -> void:
 	_input(KEY_ENTER)
 	_check(main._current_page == &"BattlePage" and GameState.state == GameState.State.S2 and not GameState.is_frozen() and b.start_count == 0 and b._buttons[0].disabled and b.turn_count == 0, "preview_does_not_start")
 	main.show_page(&"MapPage")
-	_check(main._current_page == &"MapPage" and not GameState.is_frozen(), "battle_navigation_locked")
+	_check(main._current_page == &"MapPage" and not GameState.is_frozen(), "preview_free_page_return")

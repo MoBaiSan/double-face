@@ -185,11 +185,12 @@ func _load_map() -> void:
 		_playable = false
 		return
 	var raw_map: Dictionary = parsed as Dictionary
-	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map, _resolve_start_id(raw_map))
+	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map)
 	if data == null:
 		_playable = false
 		_points.clear()
 		return
+	_start_fallback_warning = data.used_fallback
 	_grid_size = Vector2(data.grid_size)
 	_start_id = data.start_id
 	_visual = data.visual
@@ -198,16 +199,9 @@ func _load_map() -> void:
 	if not _playable:
 		push_error("SP-06 map is unplayable: start_id=%s" % _start_id)
 func _resolve_start_id(raw_map: Dictionary) -> StringName:
-	var requested: StringName = StringName(str(raw_map.get("start_id", "")))
-	var found: Dictionary = {}
-	for point_variant: Variant in raw_map.get("points", []):
-		if point_variant is Dictionary:
-			found[StringName(str((point_variant as Dictionary).get("id", "")))] = true
-	if requested != &"" and found.has(requested):
-		return requested
-	_start_fallback_warning = true
-	push_warning("MapData start_id 缺失或不存在，回落 entry_exit")
-	return &"entry_exit"
+	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map)
+	_start_fallback_warning = data != null and data.used_fallback
+	return data.start_id if data != null else &""
 func _reveal_neighbors(node_id: StringName) -> void:
 	_revealed[node_id] = true
 	var point: Dictionary = _points.get(node_id, {}) as Dictionary
@@ -352,9 +346,10 @@ func _should_draw_outline(point_id: StringName, point: Dictionary) -> bool: retu
 func get_last_gui_input_consumed_for_test() -> bool: return _last_gui_input_consumed
 func load_map_for_test(raw_map: Dictionary) -> bool:
 	_start_fallback_warning = false
-	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map, _resolve_start_id(raw_map))
+	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map)
 	if data == null:
 		return false
+	_start_fallback_warning = data.used_fallback
 	_grid_size = Vector2(data.grid_size)
 	_start_id = data.start_id
 	_visual = data.visual

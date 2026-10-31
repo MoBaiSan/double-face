@@ -1,5 +1,5 @@
 extends RefCounted
-
+const P2 = preload("res://scripts/p2_selftest.gd")
 var _map: Node
 var _failures: int = 0
 var _vital_signal_count: int = 0
@@ -9,6 +9,7 @@ const MAP_DATA_SCRIPT = preload("res://scripts/map_data.gd")
 ## 在显式自测参数下加载拆分后的断言模块，并把失败数映射为进程退出码。
 func run(map: Node) -> int:
 	_map = map
+	P2.component_callbacks(map.get_tree().current_scene, _check)
 	var scope = preload("res://scripts/prologue_test_context.gd").component_scope(map.get_tree().current_scene)
 	if not GameState.vital_changed.is_connected(_on_test_vital_changed):
 		GameState.vital_changed.connect(_on_test_vital_changed)
@@ -40,6 +41,7 @@ func _prepare_map_state() -> void:
 func _test_task_guards() -> void:
 	_check(_map.mouse_filter != Control.MOUSE_FILTER_STOP, "mouse_filter_not_stop actual=%d" % _map.mouse_filter)
 	var source_map: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/map.json"))
+	P2.map_validation(_map, _check)
 	var point2_map: Dictionary = source_map.duplicate(true)
 	point2_map["start_id"] = "point2"
 	var point2_loaded: bool = _map.load_map_for_test(point2_map)
@@ -84,6 +86,7 @@ func _test_nav_refresh(map_page: Control) -> void:
 	temp.free()
 	nav.refresh_candidates()
 	_check(added == before + 1 and hidden == before, "nav_refresh_on_visibility=true before=%d added=%d hidden=%d" % [before, added, hidden])
+	P2.re_register_callbacks(_map.get_tree().current_scene, _check)
 
 ## 监听父级真实 GUI 信号；不更改过滤器，也不直接调用输入处理函数。
 func _test_mouse_event_path() -> void:
@@ -145,7 +148,7 @@ func _test_initial_layout_and_input() -> void:
 		"grid_square_pitch expected<=0.5 actual=%.3f" % abs(horizontal_pitch - vertical_pitch))
 	var centered: bool = _is_grid_centered()
 	_check(centered, "grid_centered expected<=1 actual=(%.3f, %.3f)" % _grid_center_delta())
-	_check(not _map.is_visible_in_tree(), "hidden_map_input blocked=true")
+	_check(P2.hidden_map_ignores_keys(_map), "hidden_map_input_ignores_real_keys position_steps_vital_unchanged=true unconsumed=2")
 	_test_keyboard_event_path()
 	var after_c1: Array[StringName] = _map.get_revealed_ids()
 	_check(_same_ids(after_c1, [&"c1", &"entry_exit", &"point1"]),

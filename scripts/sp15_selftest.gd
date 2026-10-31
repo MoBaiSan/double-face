@@ -157,7 +157,7 @@ func _battle() -> void:
 	ck(24, h.battle_full(), "both_fighters_full_after_retry")
 	ck(26, old.get_ref() == null and h.c.battle.get_instance_id() != old_id and GameState.run_id == run + 1 and h.c.battle._run_id == run + 1, "battle_identity_matches_new_run")
 	var b = h.c.battle
-	ck(27, b.turn_phase == b.State.INACTIVE and b.turn_count == 0 and b.start_count == 0 and b.elapsed == 0 and not b._started and not b._settled and not b._returned and not b._return_permit and not b._charged and b._received_multiplier == 1.0, "battle_latches_are_fresh")
+	ck(27, b.turn_phase == b.State.INACTIVE and b.turn_count == 0 and b.start_count == 0 and b.elapsed == 0 and not b._started and not b._settled and not b._returned and not b.has_method("can_show_page") and not b.get_property_list().any(func(p: Dictionary): return p.name == "_return_permit") and not b._charged and b._received_multiplier == 1.0, "battle_latches_are_fresh")
 	var before: Array = [GameState.vital_now, GameState.must_done, GameState.state]
 	var refused: bool = not GameState.request_transition(&"failure", run) and not GameState.record_investigation(&"point1", run)
 	h.service.enter_failure(&"failure", run)
