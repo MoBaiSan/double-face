@@ -226,3 +226,12 @@
 - U-03b：任何时候三页自由翻，唯一例外是「战斗真实败北」时锁在战斗页；旧音响入口文案与首步卡死一并修（`scripts/prologue_flow.gd`、`scenes/Main.tscn`）。
 - 复审（codex-13w）：可提交 / MUSTFIX=0；十组 389 PASS 全绿、SP-23 55/0；`scripts/sp23_selftest.gd` 400→399 行满足硬界。
 - 欠账不变：A9 真人掐表 12–16 分钟、S0/S6 站 60 秒不掉、S2 掉 4.8 的人工验证仍未做；未截图、未重打 exe。
+
+## SP-15 失败与立刻重来（2026-10-31 完成，提交 6b9e9bb）
+
+- 已完成：统一失败入口（条空 / 琥珀 HP 归 0 同一条路，战斗不单做结算图 A21）；失败演出 ≤3 秒且演出期零文字；定格后只有「立刻重来」一个按钮（默认选中、唯一可交互，键盘鼠标都能按）。
+- 重置：回里侧入口、条回满、7 个调查点全未查、进度归零、敌人满血、应急药回满 1、eaten_used 重置；R1–R4 不重播（A5）、无限次重来。
+- 结构：新增 scenes/ui/FailPanel.tscn（仅 RetryButton，文案「立刻重来」）、scripts/fail_panel.gd、scripts/failure_recovery.gd、scripts/sp15_selftest.gd、scripts/sp15_test_context.gd；改 gamestate.gd/prologue_flow.gd/attle.gd/main.gd/points.gd/sp14_selftest.gd。
+- 自检基线：SP-15 40、SP-14 78、SP-23 55、SP-10 48、SP-09 54、SP-11 21、SP-07 32、SP-06 42、SP-03 28、SP-04 16、SP-05 15 → 十一组 **438 PASS / failures 全 0**。
+- 拍板（2026-10-31）：失败屏**只放「立刻重来」**，「回到标题」留到以后做菜单；演出期零文字，只允许按钮文案。
+- 欠账：①「回到标题」功能未做（不在本卡）②失败演出的「歌声断 + 通道收拢」目前是占位，换音频与通道美术时要回来改 ③真人试玩验证（条空、战斗死亡、再条空三次同一表现）未做 ④未截图、未重打 exe。
