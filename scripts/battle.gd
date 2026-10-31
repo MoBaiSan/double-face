@@ -112,6 +112,10 @@ static func validate_configuration(data: Variant) -> String:
 func _k(suffix: String) -> float:
 	return float(_knobs["battle_" + suffix])
 
+func is_fresh_for_retry() -> bool:
+	return _valid and not _started and turn_phase == State.INACTIVE and item_uses == 1 \
+		and enemy_hp == int(_k("enemy_hp_max")) and player_hp == int(_k("player_hp_max"))
+
 func configure(main: Control) -> void:
 	if OS.get_cmdline_user_args().has("--sp23-self-test"):
 		load("res://scripts/sp23_selftest.gd").start_once(main)

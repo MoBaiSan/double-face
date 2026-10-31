@@ -164,6 +164,11 @@ func _on_dialogue_finished(skipped: bool) -> void:
 	if not item.activate():
 		push_warning("[Points] 调查扣费失败（余额不足或当前不可扣费），保持未读：%s" % MAP_IDS[map_id])
 
+func cancel_pending_for_failure() -> void:
+	_clear_pending()
+	_pending_run = -1
+	_dialogue._finish(true)
+
 func _clear_pending() -> void:
 	_pending_map_id = &""
 	_pending_item = null

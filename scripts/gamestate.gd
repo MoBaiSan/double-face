@@ -199,7 +199,7 @@ func configure_progress(definitions: Dictionary, map_ids: Dictionary) -> void:
 	_progress_valid = _required_ids.size() == REQUIRED_COUNT and _required_ids.has(&"point5")
 	reset_progress()
 
-## 只清本局数据；完整第二局由调用者销毁并重建含BattlePage的Main。
+## 只清本局数据；完整第二局须重建BattlePage并复位地图，不能只调用本函数。
 func reset_progress() -> void:
 	_completed_ids.clear()
 	_p5_read = false
@@ -244,6 +244,7 @@ var state: State:
 	get:
 		return _state
 var run_id: int = 0
+var eaten_used: bool = false
 var presenter: Callable
 var battle_actor: WeakRef
 var _events: Dictionary = {}
@@ -255,6 +256,7 @@ func begin_session(initial: State = State.S0, saved: Dictionary = {}) -> void:
 			set(key, saved[key])
 		return
 	run_id += 1
+	eaten_used = false
 	_state = initial
 	_events.clear()
 	_investigations.clear()
@@ -267,7 +269,7 @@ func capture_session() -> Dictionary:
 	var saved: Dictionary = {}
 	for key: String in ["_state", "run_id", "_events", "_investigations",
 		"_required_ids", "_completed_ids", "_progress_valid", "_p5_read", "_p5_won",
-		"_exit_consumed", "_vital_now", "_frozen", "_drain_accum", "presenter", "battle_actor"]:
+		"_exit_consumed", "_vital_now", "_frozen", "_drain_accum", "presenter", "battle_actor", "eaten_used"]:
 		var value: Variant = get(key)
 		saved[key] = value.duplicate(true) if value is Dictionary else value
 	return saved

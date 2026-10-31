@@ -284,27 +284,7 @@ func _early_win() -> void:
 
 func _interfaces() -> void:
 	await _fresh()
-	GameState.vital_now = 0.0
-	ck(48, GameState.state == S.S5 and GameState.is_frozen() and not c.map.try_move_to(&"c1") and not c.main._dialogue.is_playing(), "S5立即锁定无失败台词")
-	c.key(KEY_PAGEUP)
-	c.key(KEY_PAGEDOWN)
-	for button: Button in c.main.get_node("Overlay/PageSwitchBar")._buttons: c.click(button)
-	c.return_battle()
-	ck(49, GameState.state == S.S5 and c.main._current_page == &"BattlePage" and GameState.is_frozen() and GameState.vital_now == 0, "探索归零可预览页面但返回不解除失败")
-	ck(50, not c.flow.request_retry() and not c.flow.request_title() and GameState.state == S.S5, "服务未装不假重来或标题")
-	var calls: Array = [0]
-	c.flow.title_service = func(): calls[0] += 1; return true
-	var title: bool = c.flow.request_title()
-	ck(53, title and calls[0] == 1 and not GameState.event_started(&"E11") and GameState.state == S.S5, "标题仅交宿主不串重来")
-	var session: int = GameState.run_id
-	var rejected: bool = not c.flow.retry_ready({"battle": c.battle, "map": c.map}, session)
-	c.replace_battle()
-	var accepted: bool = c.flow.retry_ready({"battle": c.battle, "map": c.map}, session)
-	var reset: bool = rejected and accepted and c.battle.start_count == 0 and c.battle.item_uses == 1 and c.battle.enemy_hp == 100
-	var initial: bool = GameState.state == S.S2 and GameState.vital_now == 100.0 and c.map.get_current_node_id() == &"entry_exit" and not GameState.event_started(&"E1") and GameState.event_done(&"E11")
-	var started: bool = _retry_starts_battle()
-	ck(51, reset and started, "重来必须新战斗实例和全复位，真实点5调查可开战")
-	ck(52, initial and GameState.run_id == session + 1 and c.battle._run_id == GameState.run_id, "新局直接S2不重播开场，后继战斗绑定新局代号")
+	preload("res://scripts/sp15_test_context.gd").legacy_interfaces(c, ck, _retry_starts_battle)
 
 func _retry_starts_battle() -> bool:
 	if not c.walk(C.ROUTE):
@@ -357,6 +337,9 @@ func _user_play() -> void:
 func _free_pages() -> void:
 	for state: int in S.values():
 		await _fresh(state)
+		if state == S.S5:
+			ck(68 + state, preload("res://scripts/sp15_test_context.gd").legacy_s5(c), "失败模态真实键鼠不翻页_保持S5冻结")
+			continue
 		var before: Array = [GameState.state, GameState.run_id, GameState.is_frozen(), c.main._dialogue.get_current_key()]
 		var ok: bool = c.main.get_node("Overlay/PageSwitchBar")._real_page_cycle(c.main)
 		ck(68 + state, ok and before == [GameState.state, GameState.run_id, GameState.is_frozen(), c.main._dialogue.get_current_key()], "无战败实例各状态真实翻页_保持状态与剧情_%d" % state)

@@ -9,6 +9,7 @@ signal battle_entered
 signal s1_finished
 signal safehouse_entered
 signal prologue_finished
+var recovery: Node
 var main: Control
 var dialogue: Control
 var map: Control
@@ -53,6 +54,9 @@ func configure(host: Control) -> void:
 	GameState.exit_confirmed.connect(_on_exit)
 	main.get_node("Pages/BattlePage").configure(main)
 	_bind_battle()
+	recovery = preload("res://scripts/failure_recovery.gd").new()
+	add_child(recovery)
+	recovery.configure(self)
 	_present(GameState.state)
 	_play_event(&"E1", range(101, 107))
 	_start_requested_test.call_deferred()
@@ -67,7 +71,10 @@ func _bind_battle() -> void:
 
 func _start_requested_test() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
-	if args.has("--sp14-self-test") and not get_tree().has_meta("sp14_runner"):
+	if DisplayServer.get_name() == "headless" and args.has("--sp15-self-test") and not get_tree().has_meta("sp15_runner"):
+		get_tree().set_meta("sp15_runner", true)
+		await load("res://scripts/sp15_selftest.gd").new().run(main)
+	elif args.has("--sp14-self-test") and not get_tree().has_meta("sp14_runner"):
 		get_tree().set_meta("sp14_runner", true)
 		await load("res://scripts/sp14_selftest.gd").new().run(main)
 	elif args.has("--sp11-self-test"):
@@ -169,6 +176,7 @@ func _on_state_changed(_from: int, target: int, reason: StringName, session: int
 		GameState.State.S5:
 			_sequence_event = &""
 			dialogue._finish(true)
+			main.get_node("Overlay/Points").cancel_pending_for_failure()
 			if GameState.record_event(&"E10", true, session):
 				failure_entered.emit(reason, session)
 		GameState.State.S6:
@@ -176,6 +184,8 @@ func _on_state_changed(_from: int, target: int, reason: StringName, session: int
 			safehouse_entered.emit()
 
 func _input(event: InputEvent) -> void:
+	if recovery != null and recovery.route_input(event):
+		return
 	if GameState.presenter != _present or _route_dialogue_input(event):
 		return
 	if GameState.state != GameState.State.S1 or not GameState.event_done(&"E5"):
@@ -249,9 +259,7 @@ func request_retry() -> bool:
 	if GameState.state != GameState.State.S5:
 		return false
 	retry_requested.emit(GameState.run_id)
-	if retry_service.is_valid():
-		retry_service.call(GameState.run_id)
-	return false
+	return bool(retry_service.call(GameState.run_id)) if retry_service.is_valid() else false
 
 func retry_ready(receipt: Dictionary, session: int) -> bool:
 	if GameState.state != GameState.State.S5 or session != GameState.run_id:
@@ -260,13 +268,18 @@ func retry_ready(receipt: Dictionary, session: int) -> bool:
 	var grid: Control = receipt.get("map")
 	if not _fresh_session(actor, grid):
 		return false
+	var saved: Dictionary = GameState.capture_session()
+	var previous_id: int = _battle_id
 	GameState.begin_session(GameState.State.S2)
 	actor.configure(main)
 	map = grid
 	_bind_battle()
 	if not _present(GameState.state):
+		GameState.begin_session(GameState.State.S0, saved)
+		_battle_id = previous_id
 		return false
 	GameState.record_event(&"E11", true)
+	recovery.complete_retry(session, actor)
 	return true
 
 func _fresh_session(actor: Control, grid: Control) -> bool:
@@ -276,9 +289,7 @@ func _fresh_session(actor: Control, grid: Control) -> bool:
 		return false
 	if grid != main.get_node("Pages/MapPage/MapArea/CursorContainer/MapGrid"):
 		return false
-	if actor._started or actor.item_uses != 1 or actor.enemy_hp != int(actor._k("enemy_hp_max")):
-		return false
-	if actor.player_hp != int(actor._k("player_hp_max")) or grid.get_step_count() != 0:
+	if not actor.is_fresh_for_retry() or grid.get_step_count() != 0:
 		return false
 	for id: StringName in grid._points:
 		var item: Control = grid.get_interactable(id)

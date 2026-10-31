@@ -81,6 +81,8 @@ func _print_sp04_demo(prefix: String, bar: VitalBar) -> void:
 		prefix, bar.get_flash_count(), bar.get_fill_top(), str(bar.size.y > bar.size.x)])
 ## 显示指定常驻页并切换空数据引用；未知页返回 false 且不改变当前页。
 func show_page(name: StringName) -> bool:
+	if GameState.state == GameState.State.S5 and not (_flow != null and _flow.presenting):
+		return false
 	if $Pages/BattlePage.turn_phase == $Pages/BattlePage.State.DEFEATED and name != &"BattlePage":
 		return false
 	if not _pages.has(name):
