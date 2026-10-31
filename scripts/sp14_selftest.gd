@@ -261,7 +261,7 @@ func _ending() -> void:
 	c.finish_sequence(c.main._dialogue)
 	c.click(c.flow.safe_room.get_node("Objects/Sofa"))
 	var door: bool = c.flow.content.request_door()
-	c.flow.finish_safehouse(&"E14", GameState.run_id)
+	c.finish_sequence(c.main._dialogue)
 	ck(47, door and finished.size() == 1 and not GameState.event_done(&"E13"), "上药完成即可收尾信赖可选")
 
 func _partial_win() -> void:

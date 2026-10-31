@@ -16,6 +16,7 @@ var map: Control
 var content: Control
 var safe_room: Control
 var room_exit: Node
+var epilogue: Node
 var checkpoint = preload("res://scripts/prologue_checkpoint.gd").new()
 var retry_service: Callable
 var title_service: Callable
@@ -72,6 +73,9 @@ func _setup_safehouse() -> void:
 	safe_room.configure(self, room_exit)
 	content.sofa_requested.connect(func(): safe_room.request_object("Sofa"))
 	content.door_requested.connect(func(): safe_room.request_object("Door"))
+	epilogue = preload("res://scripts/safe_room_epilogue.gd").new()
+	add_child(epilogue)
+	epilogue.configure(self)
 
 func _bind_battle() -> void:
 	var actor: Control = main.get_node("Pages/BattlePage")
@@ -83,7 +87,10 @@ func _bind_battle() -> void:
 
 func _start_requested_test() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
-	if DisplayServer.get_name() == "headless" and args.has("--sp17-self-test") and not get_tree().has_meta("sp17_runner"):
+	if DisplayServer.get_name() == "headless" and args.has("--sp19-self-test") and not get_tree().has_meta("sp19_runner"):
+		get_tree().set_meta("sp19_runner", true)
+		await load("res://scripts/sp19_selftest.gd").new().run(main)
+	elif DisplayServer.get_name() == "headless" and args.has("--sp17-self-test") and not get_tree().has_meta("sp17_runner"):
 		get_tree().set_meta("sp17_runner", true)
 		await load("res://scripts/sp17_selftest.gd").new().run(main)
 	elif DisplayServer.get_name() == "headless" and args.has("--sp15-self-test") and not get_tree().has_meta("sp15_runner"):
@@ -323,6 +330,8 @@ func request_title() -> bool:
 	return bool(title_service.call()) if title_service.is_valid() else false
 
 func finish_safehouse(id: StringName, session: int) -> bool:
+	if id == &"E14" and (epilogue == null or not epilogue.can_finish(session)):
+		return false
 	if id not in [&"E12", &"E13", &"E14"] or not GameState.record_event(id, true, session):
 		return false
 	if id == &"E14":

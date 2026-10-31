@@ -1,8 +1,10 @@
 ## 安全屋阅读与确认；主状态只读 GameState，所有本页播放经过同一入口。
 extends Control
+signal session_entered(session: int)
+signal exit_line_finished(session: int, completed: bool)
 const Interaction = preload("res://scripts/interactable.gd")
-const SEQUENCES: Dictionary = {&"sofa": ["T176", "T177"], &"detail": ["T190"]}
-const ALLOWED_IDS: Array[String] = ["T176", "T177", "T190"]
+const SEQUENCES: Dictionary = {&"sofa": ["T176", "T177"], &"detail": ["T190"], &"exit": ["T193"]}
+const ALLOWED_IDS: Array[String] = ["T176", "T177", "T190", "T193"]
 const TARGET_RECTS: Dictionary = {
 	"Sofa": Rect2(0.12, 0.66, 0.15, 0.18), "Scar": Rect2(0.38, 0.33, 0.10, 0.17),
 	"Door": Rect2(0.84, 0.20, 0.10, 0.55)}
@@ -56,7 +58,10 @@ func enter_session() -> void:
 	for id: String in TARGET_RECTS:
 		interaction(id).set_read(false)
 	$Status/ProgressNotice.text = ""
+	visual.show()
 	visual.reset_dressing()
+	$Objects.show()
+	session_entered.emit(captured_run)
 	_refresh_status()
 	_restore_focus.call_deferred()
 
@@ -102,7 +107,10 @@ func request_room_sequence(kind: StringName, ids: Array) -> bool:
 	for id: Variant in ids:
 		if id not in ALLOWED_IDS or not player.get_lines().has(id):
 			return false
-	if not _can_request():
+	if kind == &"exit":
+		if not _can_read_exit():
+			return false
+	elif not _can_request():
 		return false
 	_kind = kind
 	_sequence_run = captured_run
@@ -127,9 +135,13 @@ func _on_sequence_finished(skipped: bool) -> void:
 		return
 	var complete: bool = not skipped and _owns_session() and _sequence_run == captured_run
 	complete = complete and not player.is_playing() and _seen == _expected and player._keys == _expected
-	if complete:
+	var exit_read: bool = _kind == &"exit"
+	var session: int = _sequence_run
+	if complete and not exit_read:
 		interaction("Sofa" if _kind == &"sofa" else "Scar").complete_reading()
 	_clear_reading()
+	if exit_read:
+		exit_line_finished.emit(session, complete)
 
 func _clear_reading() -> void:
 	busy = false
@@ -176,3 +188,6 @@ func _layout_targets() -> void:
 		var button: Button = $Objects.get_node(id)
 		button.position = canvas.position + fraction.position * canvas.size
 		button.size = fraction.size * canvas.size
+
+func _can_read_exit() -> bool:
+	return _owns_session() and not busy and not player.is_playing() and exit_service.is_waiting_before_save(captured_run) and flow.epilogue.can_read(captured_run)

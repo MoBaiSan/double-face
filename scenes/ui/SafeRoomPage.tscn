@@ -1,8 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/safe_room.gd" id="1_room"]
 [ext_resource type="Script" path="res://scripts/safe_room_illustration.gd" id="2_art"]
 [ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="3_font"]
+
+[ext_resource type="Script" path="res://scripts/safe_room_doorway.gd" id="4_doorway"]
 
 [sub_resource type="StyleBoxFlat" id="Paper"]
 bg_color = Color(0.94902, 0.921569, 0.839216, 1)
@@ -43,6 +45,12 @@ mouse_filter = 2
 layout_mode = 0
 mouse_filter = 2
 script = ExtResource("2_art")
+
+[node name="DoorwayVisual" type="Control" parent="Illustration"]
+visible = false
+layout_mode = 0
+mouse_filter = 2
+script = ExtResource("4_doorway")
 
 [node name="Objects" type="Control" parent="."]
 layout_mode = 1

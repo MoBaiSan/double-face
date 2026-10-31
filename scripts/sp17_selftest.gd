@@ -138,6 +138,7 @@ func _door() -> void:
 	ck(19, h.c.flow.checkpoint.attempts == 0 and h.exit_service.accepted == 0 and h.receipts.is_empty(), "door_before_sofa_does_nothing")
 	h.click("Sofa")
 	h.click("Door")
+	h.finish_reading()
 	ck(20, h.exit_service.accepted == 1 and h.exit_service.committed and h.c.flow.checkpoint.attempts == 1 and h.receipts.size() == 1, "door_mouse_starts_one_exit")
 	var doc: Dictionary = h.document()
 	ck(21, doc.get("version") == 1 and doc.get("checkpoint") == "safehouse_exit" and doc.get("progress") == {"safehouse_reached": true, "safehouse_exit": true, "r13_done": true, "trust_read": false}, "exit_checkpoint_round_trip")
@@ -145,8 +146,8 @@ func _door() -> void:
 		h.click("Door")
 		h.key(KEY_ENTER)
 	ck(22, h.c.flow.checkpoint.writes == 1 and h.c.flow.checkpoint.attempts == 1 and h.exit_service.accepted == 1 and h.receipts.size() == 1, "repeated_door_one_success")
-	ck(30, h.receipts.size() == 1 and not GameState.event_done(&"E14") and h.finished.is_empty(), "saved_is_not_r15_finished")
-	ck(37, not h.room.interaction("Scar").read and not GameState.event_started(&"E13") and not GameState.event_done(&"E13") and h.ids() == ["T176", "T177"], "trust_is_not_required_or_started")
+	ck(30, h.receipts.size() == 1 and GameState.event_done(&"E14") and h.finished.size() == 1 and h.ids() == ["T176", "T177", "T193"], "r15_finishes_after_saved")
+	ck(37, not h.room.interaction("Scar").read and not GameState.event_started(&"E13") and not GameState.event_done(&"E13") and h.ids() == ["T176", "T177", "T193"], "trust_is_not_required_or_started")
 
 func _save_failure() -> void:
 	await h.fresh(host, S.S4)
@@ -154,6 +155,7 @@ func _save_failure() -> void:
 	h.finish_reading()
 	h.complete_sofa()
 	h.click("Door")
+	h.finish_reading()
 	h.c.flow.checkpoint.write_once(GameState.run_id, &"task_complete", {})
 	h.c.flow.checkpoint.write_once(GameState.run_id, &"safehouse_exit", {})
 	ck(23, h.c.flow.checkpoint.writes == 2 and h.c.flow.checkpoint.attempts == 2 and h.receipts.size() == 1, "two_checkpoint_keys_independent")
@@ -161,6 +163,7 @@ func _save_failure() -> void:
 	h.complete_sofa()
 	h.c.flow.checkpoint.path += "/missing/save.json"
 	h.click("Door")
+	h.finish_reading()
 	var status: Label = h.room.get_node("Status/SaveStatus")
 	ck(24, h.exit_service.pending and not h.exit_service.committed and h.exit_service.last_error != OK and status.is_visible_in_tree() and status.text == "自动保存失败，正在重试。" and status.mouse_filter == Control.MOUSE_FILTER_IGNORE and status.focus_mode == Control.FOCUS_NONE and h.receipts.is_empty(), "open_failure_visible_pending")
 	await h.fresh(host)
@@ -169,6 +172,7 @@ func _save_failure() -> void:
 	h.c.flow.checkpoint.replace_file = func(_a: String, _b: String): return ERR_BUSY
 	h.complete_sofa()
 	h.click("Door")
+	h.finish_reading()
 	ck(25, h.exit_service.pending and not h.exit_service.committed and h.c.flow.checkpoint.writes == 1 and h.file_text() == old and h.receipts.is_empty(), "replace_failure_preserves_previous")
 
 func _retry() -> void:
@@ -193,6 +197,7 @@ func _stale() -> void:
 	h.complete_sofa()
 	h.c.flow.checkpoint.replace_file = func(_a: String, _b: String): return ERR_BUSY
 	h.click("Door")
+	h.finish_reading()
 	var attempts: int = h.c.flow.checkpoint.attempts
 	var old_run: int = GameState.run_id
 	GameState.begin_session(S.S6)
@@ -205,6 +210,7 @@ func _stale() -> void:
 	h.complete_sofa()
 	h.c.flow.checkpoint.replace_file = func(_a: String, _b: String): return ERR_BUSY
 	h.click("Door")
+	h.finish_reading()
 	h.c.main.show_page(&"MapPage")
 	h.c.flow.checkpoint.replace_file = Callable()
 	h.exit_service._process(1.0)
@@ -215,12 +221,14 @@ func _reused_room() -> bool:
 	await h.fresh(host)
 	h.complete_sofa()
 	h.click("Door")
+	h.finish_reading()
 	var first: bool = h.c.flow.checkpoint.writes == 1 and h.exit_service.committed
 	var previous: int = GameState.run_id
 	H.C.enter_domain(h.c.main, S.S6)
 	h.exit_service.complete_before_save(previous, true)
 	h.complete_sofa()
 	h.click("Door")
+	h.finish_reading()
 	return first and GameState.run_id != previous and h.c.flow.checkpoint.writes == 2 and h.receipts.size() == 2 and h.receipts[1][0] == GameState.run_id
 
 func _hook() -> void:
@@ -258,6 +266,7 @@ func _persistence() -> void:
 	h.c.flow.checkpoint.replace_file = func(_a: String, _b: String): return ERR_BUSY
 	h.click("Door")
 	pages = h.page_inputs() and pages
+	h.finish_reading()
 	h.c.flow.checkpoint.replace_file = Callable()
 	h.exit_service.advance_time(1.0)
 	pages = h.page_inputs() and pages

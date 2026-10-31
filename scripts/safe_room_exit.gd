@@ -105,3 +105,6 @@ func advance_time(delta: float) -> void:
 	_elapsed += delta
 	if _elapsed >= flow.CHECKPOINT_RETRY_SECONDS:
 		_attempt()
+
+func is_waiting_before_save(session: int) -> bool:
+	return pending and _waiting and session == _run and _valid_session(session)
