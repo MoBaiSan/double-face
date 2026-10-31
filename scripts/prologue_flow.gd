@@ -19,6 +19,9 @@ var title_service: Callable
 var presenting: bool = false
 var _sequence_event: StringName = &""
 var _sequence_run: int = -1
+var _pending_checkpoint_run: int = -1
+var _checkpoint_retry_elapsed: float = 0.0
+const CHECKPOINT_RETRY_SECONDS: float = 1.0
 var _battle_id: int = 0
 var _dialogue_inputs: Array[Control] = []
 
@@ -96,6 +99,8 @@ func _play_event(id: StringName, numbers: Array) -> void:
 		return
 	_sequence_event = id
 	_sequence_run = GameState.run_id
+	if id == &"E1":
+		dialogue.skip_allowed = false
 	var keys: Array = []
 	for number: int in numbers:
 		keys.append("T%d" % number)
@@ -111,9 +116,32 @@ func _on_sequence_finished(skipped: bool) -> void:
 		&"E5":
 			s1_finished.emit()
 			request_page(&"MapPage")
+			dialogue.skip_allowed = false
+			dialogue.play_seq(["T130", "T131"])
 		&"E9":
-			checkpoint.write_once(GameState.run_id, &"task_complete", {"safehouse_reached": true})
-			GameState.request_transition(&"r10_finished", _sequence_run)
+			_pending_checkpoint_run = _sequence_run
+			_retry_checkpoint()
+
+## 保存失败留在 S4；每秒重试同一任务，成功后才进入 S6。
+func _process(delta: float) -> void:
+	if _pending_checkpoint_run < 0 or GameState.presenter != _present:
+		return
+	if not is_finite(delta) or delta <= 0.0:
+		return
+	_checkpoint_retry_elapsed += delta
+	if _checkpoint_retry_elapsed >= CHECKPOINT_RETRY_SECONDS:
+		_retry_checkpoint()
+
+func _retry_checkpoint() -> void:
+	var session: int = _pending_checkpoint_run
+	_checkpoint_retry_elapsed = 0.0
+	if session != GameState.run_id or GameState.state != GameState.State.S4:
+		_pending_checkpoint_run = -1
+		return
+	if not checkpoint.write_once(session, &"task_complete", {"safehouse_reached": true}):
+		return
+	_pending_checkpoint_run = -1
+	GameState.request_transition(&"r10_finished", session)
 
 func _on_stage_started(stage: StringName, session: int) -> void:
 	var id: StringName = {&"R2": &"E2", &"R3": &"E3", &"R4": &"E4"}.get(stage, &"")
@@ -151,6 +179,8 @@ func _input(event: InputEvent) -> void:
 	if GameState.presenter != _present or _route_dialogue_input(event):
 		return
 	if GameState.state != GameState.State.S1 or not GameState.event_done(&"E5"):
+		return
+	if not map.is_visible_in_tree():
 		return
 	var target: StringName = &""
 	if event is InputEventKey and event.pressed and not event.echo:

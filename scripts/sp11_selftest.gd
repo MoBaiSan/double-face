@@ -6,11 +6,14 @@ const T118_PARTS: Array[String] = [
 	"白濑葵", "四十余小时前出现失声症状", "疑为狂想症初期", "坐标D-7区，废弃旧排练厅",
 ]
 const PLAYER_SCRIPT = preload("res://scripts/dialogue.gd")
+const CR_CONTEXT = preload("res://scripts/prologue_test_context.gd")
 var _main: Control
 var _player: Control
 var _failures: int = 0
 var _input_count: int = 0
 var _started: Array[String] = []
+var _cr_check: Callable
+var _cr_index: int = 78
 
 func run(main: Control, player: Control) -> int:
 	_main = main
@@ -87,6 +90,7 @@ func _source_matches(lines: Dictionary) -> bool:
 	return matched == 94 and lines.size() == 94
 
 func _check_typewriter() -> void:
+	_player.skip_allowed = true
 	_player.characters_per_second = 30.0
 	var accepted: bool = _player.play_seq(["T101", "T102"])
 	var body: RichTextLabel = _player.get_node("Panel/Margin/TextLayout/Body")
@@ -210,7 +214,133 @@ func _click(position: Vector2) -> void:
 func _on_line_started(key: String) -> void:
 	_started.append(key)
 
+
+## CR-FIX：独立域夹具覆盖五条修复；不改共享夹具或生产自检分支。
+func run_cr_cases(host: Control, check: Callable) -> void:
+	_main = host
+	_cr_check = check
+	await _check_cr_cases()
+
+func _check_cr_cases() -> void:
+	for spec: Array in [[_check_opening_cancel, GameState.State.S0], [_check_entry_intro, GameState.State.S1],
+			[_check_checkpoint_retry, GameState.State.S4], [_check_victory_focus, GameState.State.S2]]:
+		var c = CR_CONTEXT.new()
+		await c.create(_main, spec[1])
+		var path: String = "user://cr_fix_%d.json" % c.main.get_instance_id()
+		c.flow.checkpoint.path = path
+		await spec[0].call(c)
+		await c.close()
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+func _check_opening_cancel(c: RefCounted) -> void:
+	var player: Control = c.main._dialogue
+	c.key(KEY_ESCAPE)
+	c.key(KEY_ESCAPE, false)
+	_check(player.is_playing() and player.get_current_key() == "T101" and not player.is_typing()
+		and not GameState.event_done(&"E1") and GameState.state == GameState.State.S0, "cancel_does_not_skip_opening")
+	c.finish_sequence(player)
+	c.click(c.main.get_node("Pages/ScenePage/TestOptions/OptionTwo"))
+	c.finish_sequence(player)
+	c.key(KEY_ESCAPE)
+	c.key(KEY_ESCAPE, false)
+	_check(GameState.event_done(&"E1") and GameState.event_done(&"E2")
+		and player.get_story_phase() == &"R3" and player.get_current_key() == "T117", "opening_cancel_still_allows_r2_skip")
+
+func _check_entry_intro(c: RefCounted) -> void:
+	var player: Control = c.main._dialogue
+	c.flow._play_event(&"E5", range(122, 130))
+	var eight: bool = player._keys == ["T122", "T123", "T124", "T125", "T126", "T127", "T128", "T129"]
+	c.finish_sequence(player)
+	c.key(KEY_DOWN)
+	_check(eight and GameState.event_done(&"E5") and player._keys == ["T130", "T131"]
+		and player.get_current_key() == "T130" and GameState.state == GameState.State.S1
+		and c.map.get_step_count() == 0 and GameState.vital_now == 100.0, "t130_plays_before_first_step")
+	c.key(KEY_ESCAPE)
+	c.key(KEY_ENTER)
+	c.key(KEY_DOWN)
+	var second: bool = player.get_current_key() == "T131" and c.map.get_step_count() == 0
+	c.finish_sequence(player)
+	var hidden: bool = true
+	for page: StringName in [&"ScenePage", &"BattlePage"]:
+		c.flow.request_page(page)
+		c.key(KEY_DOWN)
+		hidden = hidden and c.main._current_page == page and GameState.state == GameState.State.S1
+		hidden = hidden and c.map.get_current_node_id() == &"entry_exit" and c.map.get_step_count() == 0 and GameState.vital_now == 100.0
+	_check(hidden, "hidden_map_step_ignored")
+	c.flow.request_page(&"MapPage")
+	c.key(KEY_DOWN)
+	_check(second and not player.is_playing() and GameState.state == GameState.State.S2
+		and c.map.get_current_node_id() == &"c1" and c.map.get_step_count() == 1 and GameState.vital_now == 99.0, "t131_read_then_first_step")
+
+func _check_checkpoint_retry(c: RefCounted) -> void:
+	var writer = c.flow.checkpoint
+	writer.write_once(GameState.run_id - 1, &"task_complete", {"safehouse_reached": false})
+	var old: String = FileAccess.get_file_as_string(writer.path)
+	writer.replace_file = func(_a: String, _b: String): return ERR_BUSY
+	c.flow._play_event(&"E9", range(161, 171))
+	c.finish_sequence(c.main._dialogue)
+	c.flow._process(0.5)
+	_check(GameState.state == GameState.State.S4 and c.flow._pending_checkpoint_run == GameState.run_id
+		and writer.last_error == ERR_BUSY and writer.attempts == 2 and writer.writes == 1
+		and FileAccess.get_file_as_string(writer.path) == old, "checkpoint_failure_keeps_pending")
+	writer.replace_file = Callable()
+	c.flow._process(0.5)
+	c.flow._process(2.0)
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(writer.path))
+	_check(GameState.state == GameState.State.S6 and c.flow._pending_checkpoint_run == -1
+		and writer.attempts == 3 and writer.writes == 2 and saved is Dictionary
+		and saved.get("progress", {}).get("safehouse_reached") == true, "checkpoint_retry_saves_once_then_s6")
+
+func _check_victory_focus(c: RefCounted) -> void:
+	c.walk(CR_CONTEXT.ROUTE)
+	c.read_point()
+	c.win()
+	c.battle.set_process(true)
+	c.battle._return.grab_focus()
+	var kept: bool = true
+	for frame: int in range(3):
+		await c.main.get_tree().process_frame
+		kept = kept and c.main.get_viewport().gui_get_focus_owner() == c.battle._return
+	_check(kept and c.battle._return.is_visible_in_tree() and not c.battle._return.disabled
+		and c.battle._buttons.all(func(button: Button): return button.disabled), "victory_return_focus_kept")
+	c.key(KEY_ENTER)
+	c.key(KEY_ENTER, false)
+	await c.main.get_tree().process_frame
+	var returned_by_key: bool = c.battle._returned and c.main._current_page == &"MapPage" and c.event_count(&"E17") == 1
+	c.battle._on_return_pressed()
+	_check(returned_by_key and c.battle._returned and c.main._current_page == &"MapPage" and GameState.state == GameState.State.S2
+		and not GameState.is_frozen() and c.map.get_current_node_id() == &"point5"
+		and c.event_count(&"E17") == 1, "victory_keyboard_return_once")
+
+## 原 SP-14 61–67 的真实输入驱动；保留全部断言，补读独立入图段。
+static func run_story_input_test(c: RefCounted, check: Callable) -> void:
+	var bar: Control = c.main.get_node("Overlay/PageSwitchBar")
+	var page: Control = c.main.get_node("Pages/ScenePage")
+	bar._finish_user_text(c.main._dialogue)
+	var speaker: Control = page.get_node("TestOptions/OptionTwo")
+	print("[U-03b] speaker text=%s visible=%s rect=%s" % [speaker.get_node("Text").text, speaker.is_visible_in_tree(), speaker.get_global_rect()])
+	check.call(61, speaker.is_visible_in_tree() and speaker.get_node("Text").text == "旧音响", "旧音响入口有真实名称")
+	bar._click_at(speaker.get_global_rect().get_center())
+	check.call(62, c.main._dialogue.get_current_key() == "T112", "旧音响中心点击触发旁白T112")
+	for index: int in range(4):
+		bar._finish_user_text(c.main._dialogue)
+	check.call(63, c.main._dialogue.get_story_phase() == &"DONE" and GameState.state == GameState.State.S1 and c.main._dialogue.get_current_key() == "T122", "真实阅读串完R2_R3_R4进入S1")
+	bar._finish_user_text(c.main._dialogue)
+	bar._finish_user_text(c.main._dialogue)
+	bar._log_map_input(c, "departure_finished")
+	bar._click_map_point(c.map, &"c1")
+	var entered: bool = GameState.state == GameState.State.S2 and c.map.get_current_node_id() == &"c1"
+	check.call(64, entered and c.map.get_step_count() == 1 and GameState.vital_now == 99.0, "出发文字结束后真实鼠标首步到c1")
+	if not entered:
+		bar._push_key(KEY_DOWN)
+	bar._log_map_input(c, "first_step")
+	bar._test_map_continuation(c, check)
+
 func _check(passed: bool, label: String) -> void:
+	if _cr_check.is_valid():
+		_cr_index += 1
+		_cr_check.call(_cr_index, passed, label)
+		return
 	print("[SP-11] %s %s" % ["PASS" if passed else "FAIL", label])
 	if not passed:
 		_failures += 1

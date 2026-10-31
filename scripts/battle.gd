@@ -284,8 +284,11 @@ func _sync_controls(focus_command: bool = false) -> void:
 	_return.visible = _valid and turn_phase == State.VICTORY and elapsed + EPSILON >= _k("action_seconds")
 	_return.disabled = not _return.visible or _returned or GameState.vital_now <= 0.0
 	var focused: Control = get_viewport().gui_get_focus_owner()
-	if focused != null and is_ancestor_of(focused) and (not available or not is_visible_in_tree()):
+	var return_available: bool = not _return.disabled and _return.is_visible_in_tree()
+	if focused != null and is_ancestor_of(focused) and not (return_available if focused == _return else available):
 		focused.release_focus()
+	if return_available and (focused == null or is_ancestor_of(focused)):
+		_return.grab_focus()
 	if available and focus_command:
 		_buttons[0 if _buttons[_selected].disabled else _selected].grab_focus()
 

@@ -19,12 +19,13 @@ func run(host: Control) -> void:
 		_death, _victory, _partial_win, _early_win, _interfaces, _guards, _user_play, _free_pages]:
 		await test.call()
 	await _drop()
+	await preload("res://scripts/sp11_selftest.gd").new().run_cr_cases(root, ck)
 	ck(55, synchronized and observed.size() >= 7, "state_changed_画面冻结同步")
 	ck(58, first_step_count == 1 and exit_count == 1, "物理输入只消费一次")
 	ck(59, clean, "夹具恢复状态会话进度焦点连接")
 	ck(60, _source_contract() and route_finished, "show_page唯一换页_26键_A1")
 	print("[SP-14] assertions=%d failures=%d" % [results.size(), failures])
-	root.get_tree().quit(0 if failures == 0 and results.size() == 78 else 1)
+	root.get_tree().quit(0 if failures == 0 and results.size() == 87 else 1)
 
 func _fresh(initial: int = S.S2) -> void:
 	await _drop()
@@ -98,6 +99,7 @@ func _departure() -> void:
 	ck(10, GameState.vital_now == before, "S1_60秒不扣")
 	c.key(KEY_DOWN)
 	ck(11, c.map.get_current_node_id() == &"entry_exit" and c.map.get_step_count() == 0 and GameState.vital_now == before, "S1未完方向无效")
+	c.finish_sequence(c.main._dialogue)
 	c.finish_sequence(c.main._dialogue)
 	c.key(KEY_DOWN, false)
 	c.key(KEY_DOWN, true, true)
@@ -350,7 +352,7 @@ func _guards() -> void:
 
 func _user_play() -> void:
 	await _fresh(S.S0)
-	c.main.get_node("Overlay/PageSwitchBar").run_story_input_test(c, ck)
+	preload("res://scripts/sp11_selftest.gd").run_story_input_test(c, ck)
 
 func _free_pages() -> void:
 	for state: int in S.values():

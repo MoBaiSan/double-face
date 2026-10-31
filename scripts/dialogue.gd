@@ -187,8 +187,11 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		var key: InputEventKey = event
 		if key.pressed and not key.echo:
-			if event.is_action_pressed(&"ui_cancel") and skip_allowed:
-				skip()
+			if event.is_action_pressed(&"ui_cancel"):
+				if skip_allowed:
+					skip()
+				else:
+					finish_text()
 			elif event.is_action_pressed(&"ui_accept"):
 				advance()
 	elif event is InputEventMouseButton:
