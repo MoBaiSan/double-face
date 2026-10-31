@@ -26,7 +26,7 @@ func run(host: Control) -> void:
 	ck(59, clean, "夹具恢复状态会话进度焦点连接")
 	ck(60, _source_contract() and route_finished, "show_page唯一换页_26键_A1")
 	print("[SP-14] assertions=%d failures=%d" % [results.size(), failures])
-	root.get_tree().quit(0 if failures == 0 and results.size() == 91 else 1)
+	root.get_tree().quit(0 if failures == 0 and results.size() == 95 else 1)
 
 func _fresh(initial: int = S.S2) -> void:
 	await _drop()

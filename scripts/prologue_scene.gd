@@ -4,6 +4,7 @@ signal sofa_requested
 signal trust_requested
 signal door_requested
 var _checkpoint_status: Label
+var _checkpoint_probe: Label
 var _checkpoint_run: int = -1
 
 func configure() -> void:
@@ -18,6 +19,7 @@ func configure() -> void:
 	var room: Control = preload("res://scenes/ui/SafeRoomPage.tscn").instantiate()
 	add_child(room)
 	_create_checkpoint_status()
+	_create_checkpoint_probe()
 
 func present(target: int) -> void:
 	var page: Control = get_parent()
@@ -75,6 +77,10 @@ func set_checkpoint_status(error: Error = OK) -> void:
 		return
 	_checkpoint_run = GameState.run_id
 	_checkpoint_status.text = "正在保存……" if error == OK else "自动保存失败，正在重试（错误码 %d）" % int(error)
+	_checkpoint_status.anchor_top = 0.56 if error == OK else 0.45
+	_checkpoint_status.anchor_bottom = 0.76 if error == OK else 0.51
+	_checkpoint_probe.text = "" if error == OK else _probe_text()
+	_checkpoint_probe.visible = not _checkpoint_probe.text.is_empty()
 	_checkpoint_status.show()
 
 func _sync_checkpoint_status(target: int) -> void:
@@ -85,3 +91,27 @@ func _sync_checkpoint_status(target: int) -> void:
 	_checkpoint_run = -1
 	_checkpoint_status.text = ""
 	_checkpoint_status.hide()
+	_checkpoint_probe.text = ""
+	_checkpoint_probe.hide()
+
+func _create_checkpoint_probe() -> void:
+	_checkpoint_probe = Label.new()
+	_checkpoint_probe.name = "CheckpointProbe"
+	$TaskComplete.add_child(_checkpoint_probe)
+	_checkpoint_probe.anchor_left = 0.05
+	_checkpoint_probe.anchor_top = 0.54
+	_checkpoint_probe.anchor_right = 0.89
+	_checkpoint_probe.anchor_bottom = 0.91
+	_checkpoint_probe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_checkpoint_probe.focus_mode = Control.FOCUS_NONE
+	_checkpoint_probe.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_checkpoint_probe.add_theme_font_override("font", _checkpoint_status.get_theme_font("font"))
+	_checkpoint_probe.add_theme_font_size_override("font_size", 24)
+	_checkpoint_probe.add_theme_color_override("font_color", _checkpoint_status.get_theme_color("font_color"))
+	_checkpoint_probe.hide()
+
+func _probe_text() -> String:
+	var room: Control = get_node_or_null("Safehouse")
+	var flow: Node = room.get("flow") if room != null else null
+	var writer: RefCounted = flow.get("checkpoint") if flow != null else null
+	return writer.get_probe_text() if writer != null else ""

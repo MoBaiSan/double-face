@@ -6,6 +6,7 @@ var writes: int = 0
 var attempts: int = 0
 var _written: Dictionary = {}
 var replace_file: Callable
+var write_probe = preload("res://scripts/write_probe.gd").new()
 
 func write_once(run_id: int, checkpoint_id: StringName, payload: Dictionary) -> bool:
 	var key: String = "%d:%s" % [run_id, checkpoint_id]
@@ -14,6 +15,7 @@ func write_once(run_id: int, checkpoint_id: StringName, payload: Dictionary) -> 
 	attempts += 1
 	var document: Dictionary = {"version": 1, "checkpoint": checkpoint_id, "progress": payload}
 	if not _write_atomic(JSON.stringify(document)):
+		write_probe.run_once()
 		return false
 	_written[key] = true
 	writes += 1
@@ -41,3 +43,6 @@ func _replace(temporary: String, target: String) -> Error:
 	return DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary),
 		ProjectSettings.globalize_path(target))
 
+
+func get_probe_text() -> String:
+	return write_probe.text
