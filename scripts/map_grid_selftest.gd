@@ -6,7 +6,6 @@ var _vital_signal_count: int = 0
 var _lower_press_count: int = 0
 const MAP_DATA_SCRIPT = preload("res://scripts/map_data.gd")
 
-
 ## 在显式自测参数下加载拆分后的断言模块，并把失败数映射为进程退出码。
 func run(map: Node) -> int:
 	_map = map
@@ -18,6 +17,7 @@ func run(map: Node) -> int:
 	_test_task_guards()
 	_test_mouse_event_path()
 	_test_initial_layout_and_input()
+	await _test_current_marker()
 	_test_hover_and_invalid_clicks()
 	_test_dead_end()
 	_test_round_trip()
@@ -29,7 +29,6 @@ func run(map: Node) -> int:
 	scope.restore()
 	return _failures
 
-
 func _prepare_map_state() -> void:
 	preload("res://scripts/prologue_test_context.gd").enter_domain(_map.get_tree().current_scene)
 	GameState.set_process(false)
@@ -37,7 +36,6 @@ func _prepare_map_state() -> void:
 	GameState.set_frozen(false)
 	GameState.vital_now = GameState.vital_max
 	_map.reset_map()
-
 
 func _test_task_guards() -> void:
 	_check(_map.mouse_filter != Control.MOUSE_FILTER_STOP, "mouse_filter_not_stop actual=%d" % _map.mouse_filter)
@@ -71,7 +69,6 @@ func _test_task_guards() -> void:
 	map_page.visible = was_visible
 	_test_nav_refresh(map_page)
 
-
 func _test_nav_refresh(map_page: Control) -> void:
 	var scene_page: Control = map_page.get_parent().get_node("ScenePage") as Control
 	var nav: Control = scene_page.get_node("PageNav") as Control
@@ -87,7 +84,6 @@ func _test_nav_refresh(map_page: Control) -> void:
 	temp.free()
 	nav.refresh_candidates()
 	_check(added == before + 1 and hidden == before, "nav_refresh_on_visibility=true before=%d added=%d hidden=%d" % [before, added, hidden])
-
 
 ## 监听父级真实 GUI 信号；不更改过滤器，也不直接调用输入处理函数。
 func _test_mouse_event_path() -> void:
@@ -117,7 +113,6 @@ func _test_mouse_event_path() -> void:
 	map_page.visible = previous_map_visible
 	scene_page.visible = previous_scene_visible
 
-
 func _push_mouse_click(local_position: Vector2) -> void:
 	for pressed: bool in [true, false]:
 		var event := InputEventMouseButton.new()
@@ -126,12 +121,10 @@ func _push_mouse_click(local_position: Vector2) -> void:
 		event.position = _map.get_global_transform_with_canvas() * local_position
 		_map.get_viewport().push_input(event, true)
 
-
 func _on_lower_gui_input(event: InputEvent) -> void:
 	var button := event as InputEventMouseButton
 	if button != null and button.button_index == MOUSE_BUTTON_LEFT and button.pressed:
 		_lower_press_count += 1
-
 
 func _test_initial_layout_and_input() -> void:
 	_map.reset_map()
@@ -158,7 +151,6 @@ func _test_initial_layout_and_input() -> void:
 	_check(_same_ids(after_c1, [&"c1", &"entry_exit", &"point1"]),
 		"revealed_after_c1 exact=true actual=%s" % [after_c1])
 
-
 func _is_grid_centered() -> bool:
 	var ids: Array[StringName] = _map.get_point_ids()
 	var min_point: Vector2 = _map.get_point_position_for_test(ids[0])
@@ -172,7 +164,6 @@ func _is_grid_centered() -> bool:
 	var center_delta: Vector2 = (min_point + max_point) * 0.5 - _map.size * 0.5
 	return abs(center_delta.x) <= 1.0 and abs(center_delta.y) <= 1.0
 
-
 func _grid_center_delta() -> Array[float]:
 	var ids: Array[StringName] = _map.get_point_ids()
 	var min_point: Vector2 = _map.get_point_position_for_test(ids[0])
@@ -183,7 +174,6 @@ func _grid_center_delta() -> Array[float]:
 		max_point = max_point.max(point_position)
 	var delta: Vector2 = (min_point + max_point) * 0.5 - _map.size * 0.5
 	return [abs(delta.x), abs(delta.y)]
-
 
 ## 自检真实 unhandled_key_input 链；headless 实测 ui_accept 映射 KEY_ENTER。
 func _test_keyboard_event_path() -> void:
@@ -208,13 +198,11 @@ func _test_keyboard_event_path() -> void:
 	map_page.visible = previous_map_visible
 	scene_page.visible = previous_scene_visible
 
-
 func _push_key_event(keycode: Key, pressed: bool) -> void:
 	var event: InputEventKey = InputEventKey.new()
 	event.keycode = keycode
 	event.pressed = pressed
 	_map.get_viewport().push_input(event)
-
 
 func _test_hover_and_invalid_clicks() -> void:
 	GameState.vital_now = GameState.vital_max
@@ -233,7 +221,6 @@ func _test_hover_and_invalid_clicks() -> void:
 	var current_before: StringName = _map.get_current_node_id()
 	_check(not _map.try_move_to(&"point5") and GameState.vital_now == before and _map.get_current_node_id() == current_before, "click_unrevealed no_op=true")
 	_check(not _map.try_move_to(current_before) and GameState.vital_now == before, "click_current no_op=true")
-
 
 func _test_dead_end() -> void:
 	_map.reset_map()
@@ -255,7 +242,6 @@ func _test_dead_end() -> void:
 		"d1_confirm silent=true value_unchanged=true pay_point_calls=0")
 	_check(deadend_labels_ok, "deadend_draws_no_text labels=%d" % drawn_labels.size())
 
-
 func _test_round_trip() -> void:
 	GameState.vital_now = GameState.vital_max
 	_map.reset_map()
@@ -268,7 +254,6 @@ func _test_round_trip() -> void:
 	_check(_map.get_step_count() == 12, "shortest_round_trip steps=12")
 	_check(is_equal_approx(GameState.vital_now, 94.0),
 		"shortest_round_trip_vital expected=94.000000 actual=%.6f" % GameState.vital_now)
-
 
 func _test_balance_guards() -> void:
 	GameState.set_frozen(false)
@@ -299,7 +284,6 @@ func _test_balance_guards() -> void:
 	exact = exact and is_zero_approx(GameState.vital_now)
 	_check(exact, "step_at_exact_balance moved=true value=0")
 
-
 func _test_epsilon_boundaries() -> void:
 	_prepare_map_state()
 	var maximum: float = GameState.vital_max
@@ -323,7 +307,6 @@ func _test_epsilon_boundaries() -> void:
 	tiny_ignored = tiny_ignored and _vital_signal_count == signal_before
 	_check(tiny_ignored, "epsilon_ignores_tiny_change signal_delta=0 value=%.6f" % GameState.vital_now)
 
-
 func _test_corner_labels() -> void:
 	_prepare_map_state()
 	_map.try_move_to(&"c1")
@@ -337,7 +320,6 @@ func _test_corner_labels() -> void:
 	_map.try_move_to(&"point2")
 	_check(corner_label.text == "当前位置：点2", "corner_label_updates_on_move expected=当前位置：点2 actual=%s" % corner_label.text)
 
-
 func _same_ids(actual: Array[StringName], expected: Array[StringName]) -> bool:
 	if actual.size() != expected.size():
 		return false
@@ -346,12 +328,69 @@ func _same_ids(actual: Array[StringName], expected: Array[StringName]) -> bool:
 			return false
 	return true
 
-
 func _check(passed: bool, label: String) -> void:
 	print("[SP-06] %s %s" % ["PASS" if passed else "FAIL", label])
 	if not passed:
 		_failures += 1
 
-
 func _on_test_vital_changed(_value: float, _maximum: float, _reason: StringName) -> void:
 	_vital_signal_count += 1
+
+## 读取真实 draw 回调提交的几何；不截图，不用常量自比代替绘制结果。
+func _marker_frame() -> Dictionary:
+	_map.queue_redraw()
+	for frame: int in range(3):
+		await _map.get_tree().process_frame
+	return _map._marker_draws[0].duplicate(true) if _map._marker_draws.size() == 1 else {}
+
+func _test_current_marker() -> void:
+	_prepare_map_state()
+	_map.get_tree().current_scene.show_page(&"MapPage")
+	var first: Dictionary = await _marker_frame()
+	_check(first.get("width") == 3.0 and _map.INACTIVE_OUTLINE_PX == 1.0, "current_point_outline_thick expected=3 inactive=1 actual=%s" % first.get("width"))
+	_check(first.get("color") == Color("443b2c"), "current_point_outline_dark expected=#443b2c actual=%s" % first.get("color"))
+	var arrow: PackedVector2Array = first.get("arrow", PackedVector2Array())
+	var box := Rect2(arrow[0], Vector2.ZERO) if arrow.size() == 3 else Rect2()
+	for vertex: Vector2 in arrow:
+		box = box.expand(vertex)
+	var outline: Rect2 = first.get("outline", Rect2())
+	var origin: Vector2 = _map.get_global_rect().position
+	_check(_map._marker_draws.size() == 1 and first.get("id") == &"entry_exit" and arrow.size() == 3 and is_equal_approx(box.size.x, 16.8) and is_equal_approx(arrow[0].x, outline.get_center().x) and is_equal_approx(arrow[0].y, outline.position.y - 4.0) and box.size.y == 8.0 and arrow[1].y == arrow[2].y and arrow[0].y > arrow[1].y, "current_point_arrow_drawn calls=1 id=entry_exit arrow=%s outline=%s" % [Rect2(box.position + origin, box.size), Rect2(outline.position + origin, outline.size)])
+	_push_key_event(KEY_DOWN, true)
+	_push_key_event(KEY_DOWN, false)
+	var next: Dictionary = await _marker_frame()
+	var moved_arrow: PackedVector2Array = next.get("arrow", PackedVector2Array())
+	_check(_map.get_current_node_id() == &"c1" and _map.get_step_count() == 1 and _map._marker_draws.size() == 1 and next.get("id") == &"c1" and next.get("arrow") != first.get("arrow") and next.get("width") == 3.0 and moved_arrow.size() == 3 and arrow.size() == 3 and (moved_arrow[0] - arrow[0]).is_equal_approx(_map.get_point_position_for_test(&"c1") - _map.get_point_position_for_test(&"entry_exit")), "selection_moves_with_point expected=c1/1/1 actual=%s/%s/%s state=%s frozen=%s focus=%s first=%s next=%s" % [_map.get_current_node_id(), _map.get_step_count(), _map._marker_draws.size(), GameState.state, GameState.is_frozen(), _map.get_viewport().gui_get_focus_owner(), first, next])
+	var layout: Dictionary = await _marker_layout()
+	_check(layout.inside, "current_point_arrow_inside_map_area %s" % layout.evidence)
+	_check(layout.clear, "arrow_not_overlapping_corner_label %s" % layout.evidence)
+	_map.reset_map()
+
+func _marker_layout() -> Dictionary:
+	var area: Rect2 = _map.get_parent().get_parent().get_global_rect()
+	var label: Rect2 = _map.get_node("../../CurrentPointLabel").get_global_rect()
+	var result := {"inside": true, "clear": true, "evidence": ""}
+	var top_gap: float = INF
+	var label_gap: float = INF
+	var surveyable_geometry: String = ""
+	for id: StringName in _map.get_point_ids():
+		_map._current_id = id
+		_map._revealed[id] = true
+		var sample: Dictionary = await _marker_frame()
+		var polygon: PackedVector2Array = sample.get("arrow", PackedVector2Array())
+		if polygon.size() != 3:
+			result.inside = false
+			result.clear = false
+			continue
+		var box := Rect2(_map.get_global_transform() * polygon[0], Vector2.ZERO)
+		for vertex: Vector2 in polygon:
+			box = box.expand(_map.get_global_transform() * vertex)
+		if id == &"point1":
+			surveyable_geometry = " point1_arrow=%s point1_outline=%s" % [box, Rect2(sample.outline.position + _map.get_global_rect().position, sample.outline.size)]
+		result.inside = result.inside and area.encloses(box)
+		result.clear = result.clear and not label.intersects(box)
+		top_gap = minf(top_gap, box.position.y - area.position.y)
+		label_gap = minf(label_gap, maxf(maxf(box.position.x - label.end.x, label.position.x - box.end.x), maxf(box.position.y - label.end.y, label.position.y - box.end.y)))
+	result.evidence = "points=%d area=%s label=%s min_top_gap=%.2f min_label_gap=%.2f" % [_map.get_point_ids().size(), area, label, top_gap, label_gap]
+	result.evidence += surveyable_geometry
+	return result

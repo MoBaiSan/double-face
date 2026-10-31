@@ -5,6 +5,15 @@ var _arrival_text: String = ""
 signal moved(from_id: StringName, to_id: StringName, step_count: int)
 const MAP_PATH: String = "res://data/map.json"
 const MAP_DATA_SCRIPT = preload("res://scripts/map_data.gd")
+## 当前点用深色粗边与向下箭头；尺寸以像素计，宽度按圆点直径换算。
+const CURRENT_COLOR := Color("443b2c")
+const ACTIVE_OUTLINE_PX: float = 3.0
+const INACTIVE_OUTLINE_PX: float = 1.0
+const ARROW_WIDTH_RATIO: float = 0.7
+const ARROW_HEIGHT_PX: float = 8.0
+const ARROW_GAP_PX: float = 4.0
+var _marker_layer := Node2D.new()
+var _marker_draws: Array[Dictionary] = []
 @onready var _current_point_label: Label = get_node("../../CurrentPointLabel")
 var _points: Dictionary = {}
 var _start_id: StringName = &""
@@ -22,6 +31,9 @@ var _start_fallback_warning: bool = false
 var _interactions: RefCounted
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	add_child(_marker_layer)
+	_marker_layer.z_index = 1
+	_marker_layer.draw.connect(_draw_current_marker)
 	mouse_exited.connect(_on_mouse_exited)
 	visibility_changed.connect(_on_visibility_changed)
 	_sync_visibility_processing()
@@ -33,8 +45,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_pulse_time = fmod(_pulse_time + delta, _float_visual("blue_pulse_period"))
 	queue_redraw()
-func _on_visibility_changed() -> void:
-	_sync_visibility_processing()
+func _on_visibility_changed() -> void: _sync_visibility_processing()
 func _sync_visibility_processing() -> void:
 	var active: bool = is_visible_in_tree()
 	set_process(active)
@@ -85,11 +96,9 @@ func try_move_to(node_id: StringName) -> bool:
 	queue_redraw()
 	return true
 ## 读取当前光标点；地图页和无头自检只读此值。
-func get_current_node_id() -> StringName:
-	return _current_id
+func get_current_node_id() -> StringName: return _current_id
 ## 读取成功移动次数；回程移动同样计入。
-func get_step_count() -> int:
-	return _step_count
+func get_step_count() -> int: return _step_count
 ## 返回排序后的揭开集合副本，避免调用方改写内部状态。
 func get_revealed_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
@@ -98,8 +107,7 @@ func get_revealed_ids() -> Array[StringName]:
 	ids.sort()
 	return ids
 ## 返回当前可走悬停点；当前点、隐藏点和非邻点都返回空。
-func get_hovered_node_id() -> StringName:
-	return _hovered_id
+func get_hovered_node_id() -> StringName: return _hovered_id
 ## 返回当前确认候选；没有候选时确认静默失败。
 func confirm_selection() -> bool:
 	if not GameState.can_investigate():
@@ -240,17 +248,13 @@ func _point_position(point_id: StringName) -> Vector2:
 	var point: Dictionary = _points.get(point_id, {}) as Dictionary
 	var grid: Array = point.get("grid", [0, 0]) as Array
 	var pitch: float = min(size.x / _grid_size.x, size.y / _grid_size.y)
-	return Vector2(
-		size.x * 0.5 + (float(grid[0]) - (_grid_size.x - 1.0) * 0.5) * pitch,
-		size.y * 0.5 + (float(grid[1]) - (_grid_size.y - 1.0) * 0.5) * pitch)
-func _float_visual(name: String) -> float:
-	return float(_visual.get(name, 1.0))
+	return Vector2(size.x * 0.5 + (float(grid[0]) - (_grid_size.x - 1.0) * 0.5) * pitch, size.y * 0.5 + (float(grid[1]) - (_grid_size.y - 1.0) * 0.5) * pitch)
+func _float_visual(name: String) -> float: return float(_visual.get(name, 1.0))
 func _display_name(point_id: StringName) -> String:
 	var point: Dictionary = _points.get(point_id, {}) as Dictionary
 	var display_name: String = str(point.get("display_name", "")).strip_edges()
 	return display_name if not display_name.is_empty() else str(point_id)
-func _refresh_current_point_label() -> void:
-	_current_point_label.text = "当前位置：" + _display_name(_current_id)
+func _refresh_current_point_label() -> void: _current_point_label.text = "当前位置：" + _display_name(_current_id)
 func _visible_points_inside_map_area() -> bool:
 	var map_area: Control = get_parent().get_parent() as Control
 	if map_area == null:
@@ -265,8 +269,7 @@ func _visible_points_inside_map_area() -> bool:
 			return false
 	return true
 ## 返回当前待选点，供自测验证方向键只改变候选而不移动。
-func get_pending_node_id() -> StringName:
-	return _pending_id
+func get_pending_node_id() -> StringName: return _pending_id
 ## 返回地图点 id，供自测计算布局边界而不暴露内部字典。
 func get_point_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
@@ -275,20 +278,16 @@ func get_point_ids() -> Array[StringName]:
 	ids.sort()
 	return ids
 ## 返回指定点在当前地图矩形内的局部坐标。
-func get_point_position_for_test(point_id: StringName) -> Vector2:
-	return _point_position(point_id)
+func get_point_position_for_test(point_id: StringName) -> Vector2: return _point_position(point_id)
 ## 返回指定点是否应绘制描边，供自测覆盖白点恒显规则。
-func should_draw_outline_for_test(point_id: StringName) -> bool:
-	return _should_draw_outline(point_id, _points.get(point_id, {}) as Dictionary)
+func should_draw_outline_for_test(point_id: StringName) -> bool: return _should_draw_outline(point_id, _points.get(point_id, {}) as Dictionary)
 ## 设置自测用悬停位置，只改变高亮状态，不触发移动或扣点。
-func set_hover_for_test(position: Vector2) -> void:
-	_hovered_id = _hover_candidate_at(position)
-func is_map_click_target_for_test(position: Vector2) -> bool:
-	return _hover_candidate_at(position) != &""
+func set_hover_for_test(position: Vector2) -> void: _hovered_id = _hover_candidate_at(position)
+func is_map_click_target_for_test(position: Vector2) -> bool: return _hover_candidate_at(position) != &""
 ## 判断当前可见点的包围圆是否完整落在地图区内。
-func visible_points_inside_map_area() -> bool:
-	return _visible_points_inside_map_area()
+func visible_points_inside_map_area() -> bool: return _visible_points_inside_map_area()
 func _draw() -> void:
+	_marker_layer.queue_redraw()
 	for point_id: StringName in _points.keys():
 		var point: Dictionary = _points[point_id] as Dictionary
 		if not _revealed.has(point_id):
@@ -309,8 +308,7 @@ func _draw() -> void:
 		draw_string(font, label_entry.get("position", Vector2.ZERO), str(label_entry.get("text", "")),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(str(_visual.get("label_color", "#443b2c"))))
 ## 返回地图绘制路径会画的点旁文字；当前名字由 CurrentPointLabel 角标负责。
-func get_drawn_labels() -> Array[Dictionary]:
-	return _interactions.get_labels() if _interactions != null else []
+func get_drawn_labels() -> Array[Dictionary]: return _interactions.get_labels() if _interactions != null else []
 func _draw_point(point_id: StringName, point: Dictionary) -> void:
 	var point_color: String = str(point.get("color", "plain"))
 	var color: Color = Color(str(_visual.get("plain_color", "#9b8f78")))
@@ -328,15 +326,30 @@ func _draw_point(point_id: StringName, point: Dictionary) -> void:
 	if point_id == _hovered_id and not bool(point.get("surveyable", false)):
 		color = color.lightened(_float_visual("hover_brightness"))
 	draw_circle(_point_position(point_id), _float_visual("point_radius"), color)
-	if not bool(point.get("surveyable", false)) and _should_draw_outline(point_id, point):
+	if point_id != _current_id and not bool(point.get("surveyable", false)) and _should_draw_outline(point_id, point):
 		var outline: Color = Color(str(_visual.get("label_color", "#443b2c")))
-		var width: float = _float_visual("hover_outline_px") if point_id == _hovered_id else 1.0
+		var width: float = _float_visual("hover_outline_px") if point_id == _hovered_id else INACTIVE_OUTLINE_PX
 		draw_arc(_point_position(point_id), _float_visual("point_radius") + width,
 			0.0, TAU, 24, outline, width)
-func _should_draw_outline(point_id: StringName, point: Dictionary) -> bool:
-	return point_id == _current_id or point_id == _hovered_id or str(point.get("color", "plain")) == "white"
-func get_last_gui_input_consumed_for_test() -> bool:
-	return _last_gui_input_consumed
+## 独立绘制层只覆盖当前点的旧细边，保留交互组件的灰化、勾与文字。
+func _draw_current_marker() -> void:
+	_marker_draws.clear()
+	if not _revealed.has(_current_id):
+		return
+	var center: Vector2 = _point_position(_current_id)
+	var radius: float = _float_visual("point_radius")
+	var item: Control = get_interactable(_current_id)
+	var bounds := item.get_rect() if item != null else Rect2(center - Vector2.ONE * (radius + ACTIVE_OUTLINE_PX * 0.5), Vector2.ONE * (radius * 2.0 + ACTIVE_OUTLINE_PX))
+	if item != null:
+		_marker_layer.draw_rect(bounds, CURRENT_COLOR, false, ACTIVE_OUTLINE_PX)
+	else:
+		_marker_layer.draw_arc(center, bounds.size.x * 0.5, 0.0, TAU, 24, CURRENT_COLOR, ACTIVE_OUTLINE_PX)
+	var tip := Vector2(center.x, bounds.position.y - ACTIVE_OUTLINE_PX * 0.5 - ARROW_GAP_PX)
+	var arrow := PackedVector2Array([tip, tip + Vector2(-radius * ARROW_WIDTH_RATIO, -ARROW_HEIGHT_PX), tip + Vector2(radius * ARROW_WIDTH_RATIO, -ARROW_HEIGHT_PX)])
+	_marker_layer.draw_colored_polygon(arrow, CURRENT_COLOR)
+	_marker_draws.append({"id": _current_id, "arrow": arrow, "outline": bounds.grow(ACTIVE_OUTLINE_PX * 0.5), "width": ACTIVE_OUTLINE_PX, "color": CURRENT_COLOR})
+func _should_draw_outline(point_id: StringName, point: Dictionary) -> bool: return point_id == _current_id or point_id == _hovered_id or str(point.get("color", "plain")) == "white"
+func get_last_gui_input_consumed_for_test() -> bool: return _last_gui_input_consumed
 func load_map_for_test(raw_map: Dictionary) -> bool:
 	_start_fallback_warning = false
 	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map, _resolve_start_id(raw_map))
@@ -349,14 +362,10 @@ func load_map_for_test(raw_map: Dictionary) -> bool:
 	_playable = _points.has(_start_id)
 	reset_map()
 	return _playable
-func did_start_fallback_for_test() -> bool:
-	return _start_fallback_warning
-func resolve_start_id_for_test(raw_map: Dictionary) -> StringName:
-	return _resolve_start_id(raw_map)
-func get_start_id_for_test() -> StringName:
-	return _start_id
-func is_playable_for_test() -> bool:
-	return _playable
+func did_start_fallback_for_test() -> bool: return _start_fallback_warning
+func resolve_start_id_for_test(raw_map: Dictionary) -> StringName: return _resolve_start_id(raw_map)
+func get_start_id_for_test() -> StringName: return _start_id
+func is_playable_for_test() -> bool: return _playable
 func _same_ids(actual: Array[StringName], expected: Array[StringName]) -> bool:
 	if actual.size() != expected.size():
 		return false
@@ -366,11 +375,9 @@ func _same_ids(actual: Array[StringName], expected: Array[StringName]) -> bool:
 	return true
 ## 在显式自测参数下加载拆分后的断言模块，并把失败数映射为进程退出码。
 func _run_self_test() -> void:
-	var failures: int = preload("res://scripts/map_grid_selftest.gd").new().run(self)
+	var failures: int = await preload("res://scripts/map_grid_selftest.gd").new().run(self)
 	get_tree().quit(0 if failures == 0 else 1)
-
-func get_interactable(point_id: StringName) -> Control:
-	return _interactions.get_interactable(point_id) if _interactions != null else null
+func get_interactable(point_id: StringName) -> Control: return _interactions.get_interactable(point_id) if _interactions != null else null
 func bind_progress(points: Node) -> void:
 	GameState.configure_progress(points.get_definitions(), points.MAP_IDS)
 	_arrival_text = str(points.get_dialogue().get_lines()["T157"]["text"])
@@ -380,10 +387,8 @@ func bind_progress(points: Node) -> void:
 		event.connect(_refresh_progress_ui)
 	get_parent().get_parent().get_parent().get_node("ExitConfirm").pressed.connect(_confirm_exit)
 	_refresh_progress_ui()
-func _record_progress(map_id: StringName) -> void:
-	GameState.record_investigated(map_id)
-func _confirm_exit() -> bool:
-	return GameState.try_confirm_exit(_current_id == _start_id, is_visible_in_tree())
+func _record_progress(map_id: StringName) -> void: GameState.record_investigated(map_id)
+func _confirm_exit() -> bool: return GameState.try_confirm_exit(_current_id == _start_id, is_visible_in_tree())
 func _refresh_progress_ui(_a: Variant = null, _b: Variant = null, _c: Variant = null) -> void:
 	var page: Control = get_parent().get_parent().get_parent()
 	var at_entry: bool = _current_id == _start_id
