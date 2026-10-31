@@ -29,6 +29,7 @@ anchor_bottom = 1.0
 mouse_filter = 2
 
 [node name="Illustration" type="Panel" parent="."]
+layout_mode = 1
 anchor_left = 0.05
 anchor_top = 0.06
 anchor_right = 0.89
@@ -37,6 +38,7 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_placeholder")
 
 [node name="Label" type="Label" parent="Illustration"]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -49,6 +51,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="TestOptions" type="VBoxContainer" parent="."]
+layout_mode = 1
 anchor_left = 0.15
 anchor_top = 0.58
 anchor_right = 0.68
@@ -61,6 +64,7 @@ layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_option")
 
 [node name="Text" type="Label" parent="TestOptions/OptionOne"]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -81,6 +85,7 @@ layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_option")
 
 [node name="Text" type="Label" parent="TestOptions/OptionTwo"]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -94,6 +99,7 @@ text = "选项二"
 vertical_alignment = 1
 
 [node name="PageNav" type="Control" parent="."]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -102,6 +108,7 @@ script = ExtResource("2_nav")
 
 [node name="FlowContent" type="Control" parent="."]
 visible = false
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
