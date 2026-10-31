@@ -49,14 +49,15 @@ func _progress() -> void:
 	await _fresh()
 	await host.get_tree().process_frame
 	var notice: Label = _notice()
-	var ok: bool = _noninteractive_notice()
+	var ok: bool = notice != null and not notice.is_visible_in_tree()
+	ok = ok and notice.mouse_filter == Control.MOUSE_FILTER_IGNORE and notice.focus_mode == Control.FOCUS_NONE
 	if notice != null:
 		var rect: Rect2 = notice.get_global_rect()
-		ok = ok and notice.text == "正在保存……" and rect.size.x > 400.0 and rect.size.y > 24.0
+		ok = ok and notice.text.is_empty() and rect.size.x > 400.0 and rect.size.y > 24.0
 		ok = ok and c.main.get_viewport_rect().encloses(rect) and not rect.intersects(c.main._dialogue._panel.get_global_rect())
 	ok = ok and GameState.state == S.S4 and c.flow.checkpoint.writes == 0
 	await _drop()
-	check.call(88, ok and clean, "task_checkpoint_progress_is_visible")
+	check.call(88, ok and clean, "task_checkpoint_pending_has_no_result")
 
 func _failure() -> void:
 	var ok: bool = true
@@ -67,7 +68,7 @@ func _failure() -> void:
 		var notice: Label = _notice()
 		ok = ok and _noninteractive_notice() and GameState.state == S.S4
 		ok = ok and c.flow.checkpoint.last_error == sample[0] and c.flow.checkpoint.writes == 0
-		ok = ok and notice != null and notice.text == "自动保存失败，正在重试（错误码 %d）" % sample[1]
+		ok = ok and notice != null and notice.text == "自动存档失败，正在重试（错误码 %d）" % sample[1]
 		print("[U-05b] error_notice=%s" % (notice.text if notice != null else "<missing>"))
 		await _drop()
 	check.call(89, ok and clean, "task_checkpoint_failure_shows_error_code")
@@ -85,7 +86,7 @@ func _retry() -> void:
 	c.flow._process(3.0)
 	var document: Variant = JSON.parse_string(FileAccess.get_file_as_string(c.flow.checkpoint.path))
 	var ok: bool = before and held and GameState.state == S.S6 and c.flow.checkpoint.writes == 1 and c.flow.checkpoint.attempts == 2
-	ok = ok and notice != null and not notice.visible and notice.text.is_empty()
+	ok = ok and notice != null and notice.is_visible_in_tree() and notice.text == "自动存档完成"
 	ok = ok and c.flow.safe_room.is_visible_in_tree() and c.event_count(&"E9") == 1
 	ok = ok and document is Dictionary and document.get("checkpoint") == "task_complete"
 	await _drop()
@@ -166,23 +167,23 @@ func _probe_visible() -> void:
 	await host.get_tree().process_frame
 	var label: Label = _probe_label()
 	var ok: bool = c.flow.checkpoint.last_error == ERR_FILE_CANT_OPEN
-	ok = ok and _notice().text == "自动保存失败，正在重试（错误码 12）"
-	ok = ok and label != null and label.is_visible_in_tree()
+	ok = ok and _notice().text == "自动存档失败，正在重试（错误码 12）"
+	ok = ok and label != null and not label.is_visible_in_tree() and label.text.is_empty()
 	if label != null:
-		var lines: PackedStringArray = label.text.split("\n")
+		var lines: PackedStringArray = c.flow.checkpoint.get_probe_text().split("\n")
 		var expected: PackedStringArray = ["a 用户目录：" + ProjectSettings.globalize_path("user://"),
 			"b 目录存在：true", "c probe.txt：成功", "d prologue_checkpoint.json.tmp：错误码 12",
 			"e saves/probe.txt：建目录成功；成功", "f OS用户目录：" + OS.get_user_data_dir()]
-		ok = ok and lines == expected and label.get_theme_font_size("font_size") >= 24
+		ok = ok and lines == expected and _notice().get_theme_font_size("font_size") >= 24
 		ok = ok and label.mouse_filter == Control.MOUSE_FILTER_IGNORE and label.focus_mode == Control.FOCUS_NONE
-		ok = ok and c.main.get_viewport_rect().encloses(label.get_global_rect())
-		ok = ok and not label.get_global_rect().intersects(_notice().get_global_rect())
-		ok = ok and label.get_line_count() >= 6 and label.get_visible_line_count() == label.get_line_count()
-		print("[U-05c] layout=%s" % JSON.stringify({"rect": str(label.get_global_rect()), "title": str(_notice().get_global_rect()), "view": str(c.main.get_viewport_rect()), "line_count": label.get_line_count(), "visible_lines": label.get_visible_line_count(), "font": label.get_theme_font_size("font_size"), "text_matches": lines == expected, "injected": true, "error": c.flow.checkpoint.last_error, "title_text": _notice().text}))
+		ok = ok and c.main.get_viewport_rect().encloses(_notice().get_global_rect())
+		ok = ok and not _notice().get_global_rect().intersects(c.main._dialogue._panel.get_global_rect())
+		ok = ok and lines.size() == 6 and _noninteractive_notice()
+		print("[U-06b] retained_probe=%s" % JSON.stringify({"hidden": not label.is_visible_in_tree(), "empty": label.text.is_empty(), "lines": lines.size(), "text_matches": lines == expected, "error": c.flow.checkpoint.last_error, "notice": _notice().text}))
 		for line: String in lines:
 			print("[U-05c] %s" % line)
 	await _drop()
-	check.call(93, ok and clean, "write_probe_lines_visible")
+	check.call(93, ok and clean, "write_probe_details_not_rendered")
 
 func _probe_untouched() -> void:
 	await _fresh()

@@ -1,8 +1,6 @@
 ## 每个保存器启动时固定位置；先沿用旧档，否则依次探测三个候选目录。
 extends RefCounted
 const FILE_NAME: String = "prologue_checkpoint.json"
-const NOTICE_EXE: String = "存档已改存到游戏旁边的 saves 文件夹"
-const NOTICE_TEMP: String = "存档已改存到系统临时目录"
 var candidates: PackedStringArray
 var io: Callable
 var selected: String = ""
@@ -46,10 +44,7 @@ func _pin(index: int) -> String:
 	return selected
 
 func notice() -> String:
-	select()
-	if selected_index == 1:
-		return NOTICE_EXE
-	return NOTICE_TEMP if selected_index == 2 else ""
+	return ""
 
 func _probe(target: String) -> Error:
 	var directory: String = target.get_base_dir()

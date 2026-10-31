@@ -41,12 +41,15 @@ func _run() -> void:
 	_all_fail()
 	_malformed()
 	_real_cleanup()
-	await _notices()
+	await _success_text()
+	await _success_timing()
+	await _failure_text()
+	_location_text_removed()
 	_remove_owned()
 	host.queue_free()
 	await process_frame
 	print("[U-06] assertions=%d failures=%d" % [assertions, failures])
-	quit(0 if failures == 0 and assertions == 12 else 1)
+	quit(0 if failures == 0 and assertions == 15 else 1)
 
 func _check(ok: bool, label: String) -> void:
 	assertions += 1
@@ -90,7 +93,7 @@ func _io(operation: StringName, target: String) -> Variant:
 func _primary() -> void:
 	var location = _mock()
 	var ok: bool = location.select() == paths[0] and location.probe_paths.size() == 1
-	ok = ok and location.notice().is_empty() and files.is_empty()
+	ok = ok and location.selected_index == 0 and files.is_empty()
 	_check(ok, "save_primary_used_when_writable")
 
 func _beside() -> void:
@@ -138,7 +141,7 @@ func _stable() -> void:
 	var ok: bool = writer.path == paths[1]
 	for index in 8:
 		ok = location.select() == paths[1] and writer.path == paths[1] and ok
-		location.notice()
+		ok = location.selected_index == 1 and ok
 	_check(ok and ops == first_ops, "save_path_stable_within_run")
 
 func _no_formal_probe() -> void:
@@ -216,36 +219,123 @@ func _real_cleanup() -> void:
 	print("[U-06] real_probe_clean=%s paths=%s" % [ok, JSON.stringify(location.probe_paths)])
 	_check(ok, "save_real_probe_removed_without_creating_checkpoint")
 
-func _notices() -> void:
-	var ok: bool = true
-	for index in 3:
-		ok = await _notice_sample(index) and ok
-	_check(ok, "save_notice_only_on_fallback")
-
-func _notice_sample(index: int) -> bool:
+func _fresh_result(index: int = 0) -> RefCounted:
 	var context = C.new()
 	await context.create(host, C.S.S4)
 	context.flow.set_process(false)
+	context.flow.content.set_process(false)
 	var samples: PackedInt32Array = [0, 0, 0]
 	for previous in index:
 		samples[previous] = ERR_FILE_CANT_OPEN
 	context.flow.checkpoint = W.new(_mock(samples))
+	context.flow.checkpoint.write_probe.io = _legacy_probe
 	context.flow.content.present(C.S.S4)
-	await process_frame
-	var label: Label = context.flow.content.get_node("TaskComplete/SaveLocationNotice")
-	var expected: String = ["", "存档已改存到游戏旁边的 saves 文件夹", "存档已改存到系统临时目录"][index]
-	var ok: bool = label.text == expected and label.is_visible_in_tree() == (index > 0)
-	ok = label.mouse_filter == Control.MOUSE_FILTER_IGNORE and label.focus_mode == Control.FOCUS_NONE and ok
-	ok = label.get_theme_font_size("font_size") >= 24 and ok
 	context.flow._on_state_changed(C.S.S3, C.S.S4, &"exit", root.get_node("GameState").run_id)
+	return context
+
+func _result(context: RefCounted) -> Label:
+	return context.flow.content.get_node("TaskComplete/CheckpointStatus")
+
+func _close_result(context: RefCounted) -> bool:
+	var clean: bool = await context.close()
+	_erase_files()
+	return clean
+
+func _success_text() -> void:
+	var ok: bool = true
+	for index in 3:
+		var context = await _fresh_result(index)
+		var label: Label = _result(context)
+		ok = not label.is_visible_in_tree() and label.text.is_empty() and ok
+		context.finish_sequence(context.main._dialogue)
+		await process_frame
+		ok = root.get_node("GameState").state == C.S.S6 and context.flow.checkpoint.writes == 1 and ok
+		ok = label.is_visible_in_tree() and label.text == "自动存档完成" and ok
+		ok = _valid_rect(context, label) and ok
+		ok = await _close_result(context) and ok
+	_check(ok, "save_success_text_shown")
+
+func _success_timing() -> void:
+	var context = await _fresh_result()
+	context.finish_sequence(context.main._dialogue)
+	var label: Label = _result(context)
+	print("[U-06b] timing=%s" % JSON.stringify({"seconds": 0.0, "visible": label.is_visible_in_tree(), "text": label.text}))
+	for delta: float in [NAN, INF, -1.0, 0.0]:
+		context.flow.content._process(delta)
+	context.flow.content._process(1.99)
+	var ok: bool = label.is_visible_in_tree() and label.text == "自动存档完成"
+	print("[U-06b] timing=%s" % JSON.stringify({"seconds": 1.99, "visible": label.is_visible_in_tree(), "text": label.text}))
+	context.flow.content._process(0.01)
+	print("[U-06b] timing=%s" % JSON.stringify({"seconds": 2.0, "visible": label.is_visible_in_tree(), "text": label.text}))
+	ok = not label.visible and label.text.is_empty() and ok
+	context.flow.content.present(C.S.S6)
+	context.flow.content._process(10.0)
+	ok = not label.visible and label.text.is_empty() and ok
+	ok = context.flow.checkpoint.writes == 1 and ok
+	ok = await _close_result(context) and ok
+	_check(ok, "save_success_text_hides_after_two_seconds")
+
+func _failure_text() -> void:
+	var ok: bool = true
+	for error: int in [12, 13, 44]:
+		ok = await _failure_sample(error) and ok
+	_check(ok, "save_failure_text_keeps_error_code")
+
+func _failure_sample(error: int) -> bool:
+	var context = await _fresh_result()
+	context.flow.checkpoint.replace_file = func(_a: String, _b: String): return error
 	context.finish_sequence(context.main._dialogue)
 	await process_frame
-	ok = root.get_node("GameState").state == C.S.S6 and context.flow.checkpoint.writes == 1 and ok
-	ok = label.text == expected and label.is_visible_in_tree() == (index > 0) and ok
-	ok = context.main.get_viewport_rect().encloses(label.get_global_rect()) and ok
-	print("[U-06] notice=%s visible=%s state=%s" % [label.text, label.is_visible_in_tree(), root.get_node("GameState").state])
-	ok = await context.close() and ok
-	_erase_files()
+	var label: Label = _result(context)
+	var expected: String = "自动存档失败，正在重试（错误码 %d）" % error
+	var ok: bool = label.is_visible_in_tree() and label.text == expected
+	ok = root.get_node("GameState").state == C.S.S4 and context.flow.checkpoint.writes == 0 and ok
+	ok = _valid_rect(context, label) and ok
+	context.flow.content._process(3.0)
+	context.flow.content.set_checkpoint_status()
+	ok = label.is_visible_in_tree() and label.text == expected and ok
+	context.flow.checkpoint.replace_file = Callable()
+	context.flow._process(1.0)
+	ok = label.text == "自动存档完成" and context.flow.checkpoint.writes == 1 and ok
+	C.enter_domain(context.main, C.S.S2)
+	context.flow.content.present(C.S.S2)
+	ok = not label.visible and label.text.is_empty() and ok
+	ok = await _close_result(context) and ok
+	return ok
+
+func _valid_rect(context: RefCounted, label: Label) -> bool:
+	var rect: Rect2 = label.get_global_rect()
+	var ok: bool = context.main.get_viewport_rect().encloses(rect) and rect.size.y >= 24.0
+	ok = label.mouse_filter == Control.MOUSE_FILTER_IGNORE and label.focus_mode == Control.FOCUS_NONE and ok
+	var observed: Dictionary = {"notice": str(rect), "text": label.text, "buttons": {}}
+	var panels: Array[Control] = [context.main._dialogue._panel, context.flow.safe_room.player._panel]
+	observed["dialogue"] = []
+	for panel: Control in panels:
+		ok = not rect.intersects(panel.get_global_rect()) and ok
+		observed["dialogue"].append(str(panel.get_global_rect()))
+	for button: Node in context.main.find_children("*", "Button", true, false):
+		if button.is_visible_in_tree():
+			ok = not rect.intersects(button.get_global_rect()) and ok
+			observed.buttons[str(context.main.get_path_to(button))] = str(button.get_global_rect())
+	print("[U-06b] rects=%s" % JSON.stringify(observed))
+	return ok
+
+func _location_text_removed() -> void:
+	var banned: PackedStringArray = [String.chr(0x6539) + String.chr(0x5b58),
+		"saves " + String.chr(0x6587) + String.chr(0x4ef6) + String.chr(0x5939),
+		String.chr(0x4e34) + String.chr(0x65f6) + String.chr(0x76ee) + String.chr(0x5f55)]
+	_check(_source_clean("res://", banned), "save_location_text_removed")
+
+func _source_clean(folder: String, banned: PackedStringArray) -> bool:
+	var ok: bool = true
+	for sub: String in DirAccess.get_directories_at(folder):
+		if not sub.begins_with("."):
+			ok = _source_clean(folder.path_join(sub), banned) and ok
+	for file: String in DirAccess.get_files_at(folder):
+		if file.get_extension() in ["gd", "tscn", "tres", "json", "md", "cfg", "godot"]:
+			var text: String = FileAccess.get_file_as_string(folder.path_join(file))
+			for phrase: String in banned:
+				ok = not text.contains(phrase) and ok
 	return ok
 
 func _seed(path: String, text: String) -> void:
