@@ -20,12 +20,13 @@ func run(host: Control) -> void:
 		await test.call()
 	await _drop()
 	await preload("res://scripts/sp11_selftest.gd").new().run_cr_cases(root, ck)
+	await preload("res://scripts/u05_selftest.gd").new().run(root, ck)
 	ck(55, synchronized and observed.size() >= 7, "state_changed_画面冻结同步")
 	ck(58, first_step_count == 1 and exit_count == 1, "物理输入只消费一次")
 	ck(59, clean, "夹具恢复状态会话进度焦点连接")
 	ck(60, _source_contract() and route_finished, "show_page唯一换页_26键_A1")
 	print("[SP-14] assertions=%d failures=%d" % [results.size(), failures])
-	root.get_tree().quit(0 if failures == 0 and results.size() == 87 else 1)
+	root.get_tree().quit(0 if failures == 0 and results.size() == 91 else 1)
 
 func _fresh(initial: int = S.S2) -> void:
 	await _drop()

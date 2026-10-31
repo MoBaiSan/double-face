@@ -160,7 +160,9 @@ func _retry_checkpoint() -> void:
 	if session != GameState.run_id or GameState.state != GameState.State.S4:
 		_pending_checkpoint_run = -1
 		return
+	content.set_checkpoint_status()
 	if not checkpoint.write_once(session, &"task_complete", {"safehouse_reached": true}):
+		content.set_checkpoint_status(checkpoint.last_error)
 		return
 	_pending_checkpoint_run = -1
 	GameState.request_transition(&"r10_finished", session)
