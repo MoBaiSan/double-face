@@ -37,6 +37,9 @@ mouse_filter = 2
 
 [node name="ScenePage" parent="Pages" instance=ExtResource("3_scene_page")]
 
+[node name="Text" parent="Pages/ScenePage/TestOptions/OptionTwo" index="0"]
+text = "旧音响"
+
 [node name="MapPage" parent="Pages" instance=ExtResource("4_map_page")]
 visible = false
 
@@ -64,3 +67,4 @@ mouse_filter = 2
 layout_mode = 1
 
 [editable path="BookPage"]
+[editable path="Pages/ScenePage"]

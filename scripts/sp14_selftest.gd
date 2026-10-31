@@ -16,7 +16,7 @@ var route_finished: bool = false
 func run(host: Control) -> void:
 	root = host
 	for test: Callable in [_opening, _exploration, _zero_entry, _combat,
-		_death, _victory, _partial_win, _early_win, _interfaces, _guards]:
+		_death, _victory, _partial_win, _early_win, _interfaces, _guards, _user_play, _free_pages]:
 		await test.call()
 	await _drop()
 	ck(55, synchronized and observed.size() >= 7, "state_changed_画面冻结同步")
@@ -24,7 +24,7 @@ func run(host: Control) -> void:
 	ck(59, clean, "夹具恢复状态会话进度焦点连接")
 	ck(60, _source_contract() and route_finished, "show_page唯一换页_26键_A1")
 	print("[SP-14] assertions=%d failures=%d" % [results.size(), failures])
-	root.get_tree().quit(0 if failures == 0 and results.size() == 60 else 1)
+	root.get_tree().quit(0 if failures == 0 and results.size() == 78 else 1)
 
 func _fresh(initial: int = S.S2) -> void:
 	await _drop()
@@ -85,9 +85,9 @@ func _opening() -> void:
 	var e3: bool = GameState.event_done(&"E2") and c.event_count(&"E3", false) == 1
 	c.finish_sequence(c.main._dialogue)
 	ck(7, e3 and GameState.event_done(&"E3") and c.event_count(&"E4", false) == 1, "E2_E3_E4按完成串接")
-	c.main.get_node("Overlay/PageSwitchBar/MapButton").pressed.emit()
+	c.click(c.main.get_node("Overlay/PageSwitchBar/MapButton"))
 	c.key(KEY_PAGEDOWN)
-	ck(8, GameState.state == S.S0 and c.main._current_page == &"ScenePage", "R4前不能翻地图")
+	ck(8, GameState.state == S.S0 and c.main._current_page == &"BattlePage" and c.main._dialogue.get_current_key() == "T121", "R4可翻页但状态与当前台词不变")
 	c.finish_sequence(c.main._dialogue)
 	ck(9, GameState.state == S.S1 and c.flow.content.get_node("Departure").is_visible_in_tree() and c.main._dialogue.get_current_key() == "T122", "S1独立出发内容")
 	_departure()
@@ -286,9 +286,9 @@ func _interfaces() -> void:
 	ck(48, GameState.state == S.S5 and GameState.is_frozen() and not c.map.try_move_to(&"c1") and not c.main._dialogue.is_playing(), "S5立即锁定无失败台词")
 	c.key(KEY_PAGEUP)
 	c.key(KEY_PAGEDOWN)
-	for button: Button in c.main.get_node("Overlay/PageSwitchBar")._buttons: button.pressed.emit()
+	for button: Button in c.main.get_node("Overlay/PageSwitchBar")._buttons: c.click(button)
 	c.return_battle()
-	ck(49, GameState.state == S.S5 and c.main._current_page == &"MapPage", "S5所有翻页与返回锁住")
+	ck(49, GameState.state == S.S5 and c.main._current_page == &"BattlePage" and GameState.is_frozen() and GameState.vital_now == 0, "探索归零可预览页面但返回不解除失败")
 	ck(50, not c.flow.request_retry() and not c.flow.request_title() and GameState.state == S.S5, "服务未装不假重来或标题")
 	var calls: Array = [0]
 	c.flow.title_service = func(): calls[0] += 1; return true
@@ -347,6 +347,42 @@ func _guards() -> void:
 	var vital: float = GameState.vital_now
 	GameState.drain_time(0.02)
 	ck(57, accumulated and cleared and GameState.vital_now == vital, "离开窗口清零头返回不补扣")
+
+func _user_play() -> void:
+	await _fresh(S.S0)
+	c.main.get_node("Overlay/PageSwitchBar").run_story_input_test(c, ck)
+
+func _free_pages() -> void:
+	for state: int in S.values():
+		await _fresh(state)
+		var before: Array = [GameState.state, GameState.run_id, GameState.is_frozen(), c.main._dialogue.get_current_key()]
+		var ok: bool = c.main.get_node("Overlay/PageSwitchBar")._real_page_cycle(c.main)
+		ck(68 + state, ok and before == [GameState.state, GameState.run_id, GameState.is_frozen(), c.main._dialogue.get_current_key()], "无战败实例各状态真实翻页_保持状态与剧情_%d" % state)
+	await _fresh()
+	c.walk(C.ROUTE)
+	c.read_point()
+	var bar: Control = c.main.get_node("Overlay/PageSwitchBar")
+	var before: Array = [c.battle.turn_count, c.battle.enemy_hp, c.battle.player_hp, GameState.vital_now]
+	var free: bool = bar._real_page_cycle(c.main)
+	ck(76, free and GameState.state == S.S2B and GameState.is_frozen() and before == [c.battle.turn_count, c.battle.enemy_hp, c.battle.player_hp, GameState.vital_now], "真实战斗中翻页不结算不解冻")
+	c.win()
+	free = bar._real_page_cycle(c.main)
+	ck(77, free and GameState.state == S.S2B and not c.battle._returned and GameState.is_frozen(), "胜态翻页不冒充返回")
+	await _fresh()
+	c.walk(C.ROUTE)
+	c.read_point()
+	c.battle.player_hp = 10
+	c.battle.submit_command(0)
+	c.main._flow.request_page(&"ScenePage")
+	c.battle.advance_time(0.4)
+	var locked: bool = c.main._current_page == &"BattlePage"
+	for key: Key in [KEY_PAGEDOWN, KEY_PAGEUP]:
+		c.key(key)
+		locked = locked and c.main._current_page == &"BattlePage"
+	for button: Button in c.main.get_node("Overlay/PageSwitchBar")._buttons:
+		c.click(button)
+		locked = locked and c.main._current_page == &"BattlePage"
+	ck(78, locked and GameState.state == S.S5 and c.battle.player_hp == 0 and c.battle._return.disabled and GameState.is_frozen(), "翻走后战败自动回战斗且真实键鼠锁页")
 
 func _source_contract() -> bool:
 	for file: String in ["main", "prologue_flow", "prologue_scene", "battle", "dialogue", "gamestate"]:

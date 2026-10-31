@@ -7,8 +7,7 @@ const OLD: Dictionary = {"vital_max": 100.0, "time_drain_per_second": 0.08, "ste
 	"threshold_full": 61.0, "threshold_low": 31.0, "threshold_critical": 1.0, "drain_flush_threshold": 0.01}
 const KEYS: Array[String] = ["player_hp_max", "enemy_hp_max", "player_attack", "enemy_attack",
 	"damage_random_min", "damage_random_max", "charge_attack_multiplier", "charge_received_multiplier",
-	"guard_received_multiplier", "item_heal", "item_uses", "action_seconds", "attack_shift_px",
-	"hit_shift_px", "feedback_seconds", "pose_scale_delta"]
+	"guard_received_multiplier", "item_heal", "item_uses", "action_seconds", "attack_shift_px", "hit_shift_px", "feedback_seconds", "pose_scale_delta"]
 var tree: SceneTree
 var main: Control
 var b: Control
@@ -138,6 +137,7 @@ func _locked() -> bool:
 	for target: Variant in [KEY_PAGEUP, KEY_PAGEDOWN] + main.get_node("Overlay/PageSwitchBar").get_children():
 		_input(target)
 		ok = ok and main._current_page == &"BattlePage"
+		print("[U-03b-r2] defeat input=%s center=%s page=%s" % [OS.get_keycode_string(target) if target is int else target.name, str(target.get_global_rect().get_center()) if target is Button else "-", main._current_page])
 	for page: StringName in [&"ScenePage", &"MapPage"]:
 		ok = not main.show_page(page) and ok
 	return ok and GameState.is_frozen()
@@ -272,7 +272,8 @@ func _input_timing() -> void:
 		_check(b.turn_phase == boundary[1] and b.turn_count == 1, "two_fixed_action_times")
 	_input(b._buttons[0])
 	_check(b.turn_count == 2 and b.enemy_hp == 60, "commands_keyboard_and_mouse")
-	_check(_locked(), "battle_navigation_locked")
+	var battle_before: Array = [b.get_instance_id(), GameState.state, b.turn_phase, b.turn_count, b.enemy_hp, b.player_hp, b.elapsed, b._buttons.map(func(button: Button): return button.disabled)]
+	_check(main.get_node("Overlay/PageSwitchBar")._real_page_cycle(main) and battle_before == [main.get_node("Pages/BattlePage").get_instance_id(), GameState.state, b.turn_phase, b.turn_count, b.enemy_hp, b.player_hp, b.elapsed, b._buttons.map(func(button: Button): return button.disabled)] and GameState.is_frozen(), "battle_navigation_locked")
 func _motion() -> void:
 	var frame: int = Engine.get_process_frames()
 	b.submit_command(0)
@@ -336,17 +337,18 @@ func _win(vital: float) -> void:
 	_check(GameState.vital_now == (80 if vital == 70 else 100) and events[0] == 1, "win_recovers_and_caps_once")
 	_check(_no_spread(), "no_spread_on_zero")
 	_input(b._return)
-	var locked: bool = _locked()
+	var toured: bool = main.get_node("Overlay/PageSwitchBar")._real_page_cycle(main) and not b._returned and b._return.disabled and GameState.state == GameState.State.S2B and GameState.is_frozen()
 	b.advance_time(0.4)
 	b.advance_time(1.0)
 	_check(b.player_hp == (20 if vital == 70 else 30) and b.enemy_hp == 0 and not b._enemy.visible, "lethal_no_counterattack")
-	locked = _locked() and locked
+	toured = main.get_node("Overlay/PageSwitchBar")._real_page_cycle(main) and toured and b._return.is_visible_in_tree() and not b._return.disabled and not b._returned and GameState.state == GameState.State.S2B and GameState.is_frozen()
 	var changes: int = events[3]
 	_input(b._return)
 	_check(main._current_page == &"MapPage" and not GameState.is_frozen() and map.get_current_node_id() == &"point5" and [map.get_step_count(), map.get_revealed_ids()] == place, "win_returns_same_point5")
 	b._on_return_pressed()
 	_input(b._return)
-	_check(locked and events[3] == changes + 1 and events[0] == 1, "victory_return_once")
+	_check(toured and events[3] == changes + 1 and events[0] == 1 and b._returned and b._return.disabled, "victory_return_once")
+	print("[U-03b-r2] victory toured=%s page=%s returned=%s return_disabled=%s returns=%d rewards=%d" % [toured, main._current_page, b._returned, b._return.disabled, events[3] - changes, events[0]])
 	map.confirm_selection()
 	map._interactions.investigated.emit(&"point5")
 	for page: StringName in [&"BattlePage", &"MapPage"]:

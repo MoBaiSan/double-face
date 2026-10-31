@@ -20,6 +20,7 @@ var presenting: bool = false
 var _sequence_event: StringName = &""
 var _sequence_run: int = -1
 var _battle_id: int = 0
+var _dialogue_inputs: Array[Control] = []
 
 func configure(host: Control) -> void:
 	if main != null:
@@ -40,6 +41,8 @@ func configure(host: Control) -> void:
 	var points := preload("res://scripts/points.gd").new()
 	main.get_node("Overlay").add_child(points)
 	points.configure(main, dialogue)
+	_bind_dialogue_input(dialogue)
+	_bind_dialogue_input(points.get_dialogue())
 	map.bind_progress(points)
 	map._interactions.investigated.connect(_on_investigated)
 	GameState.state_changed.connect(_on_state_changed)
@@ -74,7 +77,8 @@ func _present(target: int) -> bool:
 	elif target == GameState.State.S2B:
 		page = &"BattlePage"
 	elif target == GameState.State.S5:
-		page = main._current_page
+		var battle: Control = main.get_node("Pages/BattlePage")
+		page = &"BattlePage" if battle.turn_phase == battle.State.DEFEATED else main._current_page
 	presenting = true
 	var shown: bool = main.show_page(page)
 	presenting = false
@@ -85,12 +89,7 @@ func _present(target: int) -> bool:
 	return true
 
 func request_page(page: StringName) -> bool:
-	var allowed: StringName = &"ScenePage"
-	match GameState.state:
-		GameState.State.S2, GameState.State.S3: allowed = &"MapPage"
-		GameState.State.S2B: allowed = &"BattlePage"
-		GameState.State.S5: allowed = main._current_page
-	return main.show_page(page) if page == allowed else false
+	return main.show_page(page)
 
 func _play_event(id: StringName, numbers: Array) -> void:
 	if not GameState.record_event(id):
@@ -109,7 +108,9 @@ func _on_sequence_finished(skipped: bool) -> void:
 		return
 	match id:
 		&"E1": content.present(GameState.state)
-		&"E5": s1_finished.emit()
+		&"E5":
+			s1_finished.emit()
+			request_page(&"MapPage")
 		&"E9":
 			checkpoint.write_once(GameState.run_id, &"task_complete", {"safehouse_reached": true})
 			GameState.request_transition(&"r10_finished", _sequence_run)
@@ -147,24 +148,42 @@ func _on_state_changed(_from: int, target: int, reason: StringName, session: int
 			safehouse_entered.emit()
 
 func _input(event: InputEvent) -> void:
-	if GameState.presenter != _present:
+	if GameState.presenter != _present or _route_dialogue_input(event):
 		return
-	if GameState.state != GameState.State.S1:
+	if GameState.state != GameState.State.S1 or not GameState.event_done(&"E5"):
 		return
-	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo:
-		return
-	var direction: Vector2 = {KEY_LEFT: Vector2.LEFT, KEY_RIGHT: Vector2.RIGHT,
-		KEY_UP: Vector2.UP, KEY_DOWN: Vector2.DOWN}.get(key.keycode, Vector2.ZERO)
-	if direction == Vector2.ZERO:
+	var target: StringName = &""
+	if event is InputEventKey and event.pressed and not event.echo:
+		var direction: Vector2 = {KEY_LEFT: Vector2.LEFT, KEY_RIGHT: Vector2.RIGHT,
+			KEY_UP: Vector2.UP, KEY_DOWN: Vector2.DOWN}.get(event.keycode, Vector2.ZERO)
+		if direction == Vector2.ZERO or not map.select_direction(direction):
+			return
+		target = map._pending_id
+		map._pending_id = &""
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and map.is_visible_in_tree():
+		target = map._hover_candidate_at(map.get_global_transform_with_canvas().affine_inverse() * event.position)
+	if target == &"":
 		return
 	get_viewport().set_input_as_handled()
-	if not GameState.event_done(&"E5") or not map.select_direction(direction):
-		return
-	var target: StringName = map._pending_id
-	map._pending_id = &""
 	if GameState.request_transition(&"first_step") and map.try_move_to(target):
 		first_map_move.emit()
+
+## 文字仍走既有播放器；翻页事件留给按钮 GUI 与 Main 的同一入口。
+func _bind_dialogue_input(player: Control) -> void:
+	_dialogue_inputs.push_front(player)
+	player.line_started.connect(func(_key: String): player.set_process_input(false))
+	player.set_process_input(false)
+
+func _route_dialogue_input(event: InputEvent) -> bool:
+	if event is InputEventKey and event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN]:
+		return false
+	if event is InputEventMouse and main._page_switch_bar.get_global_rect().has_point(event.position):
+		return false
+	for player: Control in _dialogue_inputs:
+		if player.is_playing() and player.get_current_mode() != "caption":
+			player._input(event)
+			return true
+	return false
 
 func _on_investigated(point: StringName) -> void:
 	if GameState.record_investigation(point, GameState.run_id):

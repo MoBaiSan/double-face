@@ -139,10 +139,12 @@ func _full_win() -> void:
 	h.b.submit_command(0)
 	_check(16, GameState.must_done == 5 and opens == notifications + 1, "重复胜利不重复开放")
 	h.b._return.pressed.emit()
-	h.main.show_page(&"MapPage")
-	_check(17, h.main._current_page == &"BattlePage" and not h.map.is_visible_in_tree() and h.b.elapsed < 0.4, "胜态锁期间不能抢先返回")
+	var early_free: bool = h.main.show_page(&"MapPage") and h.main._current_page == &"MapPage" and h.map.is_visible_in_tree() and h.b.elapsed < 0.4 and not h.b._returned and GameState.state == GameState.State.S2B and GameState.is_frozen()
 	var steps: int = h.map.get_step_count()
 	_return()
+	h.b._return.pressed.emit()
+	print("[U-03b-r2] sp10_17 early_free=%s returned=%s disabled=%s state=%d rewards=%d vital=%s opens_delta=%d" % [early_free, h.b._returned, h.b._return.disabled, GameState.state, h.events[0], GameState.vital_now, opens - notifications])
+	_check(17, early_free and h.b._returned and h.b._return.disabled and GameState.state == GameState.State.S3 and h.events[0] == 0 and GameState.vital_now == 100.0 and GameState.must_done == 5 and opens == notifications + 1, "胜态可翻页但抢先返回无效、正式返回只结算一次")
 	_check(18, h.map.get_current_node_id() == &"point5" and h.map.get_step_count() == steps and _hint() == "该回去了", "手动返回原点5并提示")
 	await _normal_return()
 	var kept: bool = _pre_exit_revisit()
@@ -152,7 +154,8 @@ func _full_win() -> void:
 	var denied: bool = not h.map.confirm_selection()
 	_button().pressed.emit()
 	_check(29, denied and [exits, GameState.vital_now] == consumed, "重复确认与点击不重复离场")
-	_check(31, kept and GameState.state == GameState.State.S4 and not h.main.show_page(&"MapPage") and exits == consumed[0], "离场前回访保留进度，离场后S4不可绕回")
+	var s4_kept: bool = h.main.show_page(&"MapPage") and h.main._current_page == &"MapPage" and not h.map.try_move_to(&"c1") and not h.map.confirm_selection() and not GameState.can_investigate()
+	_check(31, kept and s4_kept and GameState.state == GameState.State.S4 and GameState.is_frozen() and exits == consumed[0] and GameState.vital_now == consumed[1], "离场前回访保留进度，S4可看地图但不可绕回探索或重复离场")
 
 func _pre_exit_revisit() -> bool:
 	var visited: Dictionary = h.map._visited.duplicate()
@@ -212,13 +215,14 @@ func _injured() -> void:
 func _defeat_reset() -> void:
 	_walk(FIXTURE.ROUTE)
 	h._read()
+	var toured: bool = h.main.get_node("Overlay/PageSwitchBar")._real_page_cycle(h.main)
 	h.b.player_hp = 10
 	h._turn(0)
 	_check(13, h.b.turn_phase == h.B.State.DEFEATED and GameState.must_done == 0 and not GameState.exit_open and _hint() == "", "败态不完成、不提示成功")
 	var started: int = h.b.start_count
 	h.map.reset_map()
-	h.main.show_page(&"MapPage")
-	_check(32, GameState.must_done == 0 and not GameState.exit_open and h.map._visited == {&"entry_exit": true} and h.b.start_count == started and h.b.turn_phase == h.B.State.DEFEATED and h.main._current_page == &"BattlePage", "reset只清数据、不解败态或战斗单场标记")
+	var denied: bool = not h.main.show_page(&"MapPage")
+	_check(32, toured and denied and GameState.must_done == 0 and not GameState.exit_open and h.map._visited == {&"entry_exit": true} and h.b.start_count == started and h.b.turn_phase == h.B.State.DEFEATED and h.main._current_page == &"BattlePage" and GameState.state == GameState.State.S5 and GameState.is_frozen(), "翻页后reset只清数据、不解败态锁页或战斗单场标记")
 func _zero() -> void:
 	_walk(FIXTURE.ROUTE)
 	GameState.vital_now = GameState.get_knob("required_point_cost")
