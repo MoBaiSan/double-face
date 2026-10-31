@@ -7,12 +7,14 @@ signal door_requested
 func configure() -> void:
 	visible = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for id: String in ["TaskComplete", "Safehouse"]:
+	for id: String in ["TaskComplete"]:
 		var slot := Control.new()
 		slot.name = id
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		add_child(slot)
+	var room: Control = preload("res://scenes/ui/SafeRoomPage.tscn").instantiate()
+	add_child(room)
 
 func present(target: int) -> void:
 	var page: Control = get_parent()
@@ -21,6 +23,8 @@ func present(target: int) -> void:
 	$Departure.visible = target == GameState.State.S1
 	$TaskComplete.visible = target == GameState.State.S4
 	$Safehouse.visible = target == GameState.State.S6
+	if target == GameState.State.S6:
+		$Safehouse.enter_session()
 	var enabled: bool = target == GameState.State.S0 and GameState.event_done(&"E1")
 	page.get_node("PageNav").set_process(enabled)
 	page.get_node("PageNav").set_process_input(enabled)

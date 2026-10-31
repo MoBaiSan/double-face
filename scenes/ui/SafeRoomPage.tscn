@@ -1,0 +1,136 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/safe_room.gd" id="1_room"]
+[ext_resource type="Script" path="res://scripts/safe_room_illustration.gd" id="2_art"]
+[ext_resource type="FontFile" path="res://assets/fonts/simkai.ttf" id="3_font"]
+
+[sub_resource type="StyleBoxFlat" id="Paper"]
+bg_color = Color(0.94902, 0.921569, 0.839216, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.654902, 0.588235, 0.447059, 1)
+
+[sub_resource type="StyleBoxEmpty" id="Empty"]
+
+[node name="Safehouse" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_room")
+
+[node name="PaperFrame" type="Panel" parent="."]
+layout_mode = 1
+anchor_left = 0.05
+anchor_top = 0.0597222
+anchor_right = 0.890625
+anchor_bottom = 0.791667
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Paper")
+
+[node name="Illustration" type="Control" parent="."]
+layout_mode = 1
+anchor_left = 0.05
+anchor_top = 0.0597222
+anchor_right = 0.890625
+anchor_bottom = 0.791667
+mouse_filter = 2
+
+[node name="DressingVisual" type="Control" parent="Illustration"]
+layout_mode = 0
+mouse_filter = 2
+script = ExtResource("2_art")
+
+[node name="Objects" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Sofa" type="Button" parent="Objects"]
+layout_mode = 0
+focus_neighbor_left = NodePath("../Door")
+focus_neighbor_top = NodePath("../Door")
+focus_neighbor_right = NodePath("../Scar")
+focus_neighbor_bottom = NodePath("../Scar")
+focus_next = NodePath("../Scar")
+focus_previous = NodePath("../Door")
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.2, 0.17, 0.13, 1)
+theme_override_styles/normal = SubResource("Empty")
+theme_override_styles/hover = SubResource("Empty")
+theme_override_styles/pressed = SubResource("Empty")
+theme_override_styles/focus = SubResource("Empty")
+theme_override_styles/disabled = SubResource("Empty")
+text = "沙发"
+
+[node name="Scar" type="Button" parent="Objects"]
+layout_mode = 0
+focus_neighbor_left = NodePath("../Sofa")
+focus_neighbor_top = NodePath("../Sofa")
+focus_neighbor_right = NodePath("../Door")
+focus_neighbor_bottom = NodePath("../Door")
+focus_next = NodePath("../Door")
+focus_previous = NodePath("../Sofa")
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.2, 0.17, 0.13, 1)
+theme_override_styles/normal = SubResource("Empty")
+theme_override_styles/hover = SubResource("Empty")
+theme_override_styles/pressed = SubResource("Empty")
+theme_override_styles/focus = SubResource("Empty")
+theme_override_styles/disabled = SubResource("Empty")
+text = "斑的旧伤"
+
+[node name="Door" type="Button" parent="Objects"]
+layout_mode = 0
+focus_neighbor_left = NodePath("../Scar")
+focus_neighbor_top = NodePath("../Scar")
+focus_neighbor_right = NodePath("../Sofa")
+focus_neighbor_bottom = NodePath("../Sofa")
+focus_next = NodePath("../Sofa")
+focus_previous = NodePath("../Scar")
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.2, 0.17, 0.13, 1)
+theme_override_styles/normal = SubResource("Empty")
+theme_override_styles/hover = SubResource("Empty")
+theme_override_styles/pressed = SubResource("Empty")
+theme_override_styles/focus = SubResource("Empty")
+theme_override_styles/disabled = SubResource("Empty")
+text = "门"
+
+[node name="Status" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="SaveStatus" type="Label" parent="Status"]
+visible = false
+layout_mode = 1
+anchor_left = 0.05
+anchor_top = 0.80
+anchor_right = 0.85
+anchor_bottom = 0.86
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.2, 0.17, 0.13, 1)
+
+[node name="ProgressNotice" type="Label" parent="Status"]
+layout_mode = 1
+anchor_left = 0.05
+anchor_top = 0.86
+anchor_right = 0.70
+anchor_bottom = 0.92
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.2, 0.17, 0.13, 1)

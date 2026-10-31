@@ -256,7 +256,9 @@ func _ending() -> void:
 	var finished: Array = []
 	c.watch(c.flow.prologue_finished, func(): finished.append(true))
 	ck(46, not GameState.event_done(&"E12") and not c.flow.finish_safehouse(&"E14", GameState.run_id) and finished.is_empty(), "后续内容未装不完成序章")
-	c.flow.finish_safehouse(&"E12", GameState.run_id)
+	c.click(c.flow.safe_room.get_node("Objects/Sofa"))
+	c.finish_sequence(c.main._dialogue)
+	c.click(c.flow.safe_room.get_node("Objects/Sofa"))
 	var door: bool = c.flow.content.request_door()
 	c.flow.finish_safehouse(&"E14", GameState.run_id)
 	ck(47, door and finished.size() == 1 and not GameState.event_done(&"E13"), "上药完成即可收尾信赖可选")

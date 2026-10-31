@@ -14,6 +14,8 @@ var main: Control
 var dialogue: Control
 var map: Control
 var content: Control
+var safe_room: Control
+var room_exit: Node
 var checkpoint = preload("res://scripts/prologue_checkpoint.gd").new()
 var retry_service: Callable
 var title_service: Callable
@@ -57,9 +59,19 @@ func configure(host: Control) -> void:
 	recovery = preload("res://scripts/failure_recovery.gd").new()
 	add_child(recovery)
 	recovery.configure(self)
+	_setup_safehouse()
 	_present(GameState.state)
 	_play_event(&"E1", range(101, 107))
 	_start_requested_test.call_deferred()
+
+func _setup_safehouse() -> void:
+	safe_room = content.get_node("Safehouse")
+	room_exit = preload("res://scripts/safe_room_exit.gd").new()
+	add_child(room_exit)
+	room_exit.configure(self, safe_room)
+	safe_room.configure(self, room_exit)
+	content.sofa_requested.connect(func(): safe_room.request_object("Sofa"))
+	content.door_requested.connect(func(): safe_room.request_object("Door"))
 
 func _bind_battle() -> void:
 	var actor: Control = main.get_node("Pages/BattlePage")
@@ -71,7 +83,10 @@ func _bind_battle() -> void:
 
 func _start_requested_test() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
-	if DisplayServer.get_name() == "headless" and args.has("--sp15-self-test") and not get_tree().has_meta("sp15_runner"):
+	if DisplayServer.get_name() == "headless" and args.has("--sp17-self-test") and not get_tree().has_meta("sp17_runner"):
+		get_tree().set_meta("sp17_runner", true)
+		await load("res://scripts/sp17_selftest.gd").new().run(main)
+	elif DisplayServer.get_name() == "headless" and args.has("--sp15-self-test") and not get_tree().has_meta("sp15_runner"):
 		get_tree().set_meta("sp15_runner", true)
 		await load("res://scripts/sp15_selftest.gd").new().run(main)
 	elif args.has("--sp14-self-test") and not get_tree().has_meta("sp14_runner"):
@@ -215,6 +230,8 @@ func _bind_dialogue_input(player: Control) -> void:
 	player.set_process_input(false)
 
 func _route_dialogue_input(event: InputEvent) -> bool:
+	if safe_room != null and safe_room.blocks_object_input(event):
+		return true
 	if event is InputEventKey and event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN]:
 		return false
 	if event is InputEventMouse and main._page_switch_bar.get_global_rect().has_point(event.position):
