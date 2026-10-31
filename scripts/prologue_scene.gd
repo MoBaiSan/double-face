@@ -5,6 +5,7 @@ signal trust_requested
 signal door_requested
 var _checkpoint_status: Label
 var _checkpoint_probe: Label
+var _save_location_notice: Label
 var _checkpoint_run: int = -1
 
 func configure() -> void:
@@ -20,6 +21,7 @@ func configure() -> void:
 	add_child(room)
 	_create_checkpoint_status()
 	_create_checkpoint_probe()
+	_create_location_notice()
 
 func present(target: int) -> void:
 	var page: Control = get_parent()
@@ -28,6 +30,7 @@ func present(target: int) -> void:
 	$Departure.visible = target == GameState.State.S1
 	$TaskComplete.visible = target == GameState.State.S4
 	_sync_checkpoint_status(target)
+	_sync_location_notice(target)
 	$Safehouse.visible = target == GameState.State.S6
 	if target == GameState.State.S6:
 		$Safehouse.enter_session()
@@ -82,6 +85,7 @@ func set_checkpoint_status(error: Error = OK) -> void:
 	_checkpoint_probe.text = "" if error == OK else _probe_text()
 	_checkpoint_probe.visible = not _checkpoint_probe.text.is_empty()
 	_checkpoint_status.show()
+	_sync_location_notice(GameState.State.S4)
 
 func _sync_checkpoint_status(target: int) -> void:
 	if target == GameState.State.S4:
@@ -115,3 +119,29 @@ func _probe_text() -> String:
 	var flow: Node = room.get("flow") if room != null else null
 	var writer: RefCounted = flow.get("checkpoint") if flow != null else null
 	return writer.get_probe_text() if writer != null else ""
+
+
+func _create_location_notice() -> void:
+	_save_location_notice = Label.new()
+	_save_location_notice.name = "SaveLocationNotice"
+	$TaskComplete.add_child(_save_location_notice)
+	_save_location_notice.anchor_left = 0.05
+	_save_location_notice.anchor_top = 0.005
+	_save_location_notice.anchor_right = 0.89
+	_save_location_notice.anchor_bottom = 0.055
+	_save_location_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_save_location_notice.focus_mode = Control.FOCUS_NONE
+	_save_location_notice.z_index = 1
+	_save_location_notice.add_theme_font_override("font", _checkpoint_status.get_theme_font("font"))
+	_save_location_notice.add_theme_font_size_override("font_size", 24)
+	_save_location_notice.add_theme_color_override("font_color", _checkpoint_status.get_theme_color("font_color"))
+	_save_location_notice.hide()
+
+func _sync_location_notice(target: int) -> void:
+	var room: Control = get_node_or_null("Safehouse")
+	var flow: Node = room.get("flow") if room != null else null
+	var writer: RefCounted = flow.get("checkpoint") if flow != null else null
+	var active: bool = target in [GameState.State.S4, GameState.State.S6]
+	_save_location_notice.text = writer.get_location_notice() if active and writer != null else ""
+	_save_location_notice.visible = not _save_location_notice.text.is_empty()
+	$TaskComplete.visible = target == GameState.State.S4 or _save_location_notice.visible
