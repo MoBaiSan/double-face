@@ -1,4 +1,4 @@
-## SP-15固定40条；每条只计一次，使用真实生产入口与Viewport事件。
+## SP-15固定48条；每条只计一次，使用真实生产入口与Viewport事件。
 extends RefCounted
 const H = preload("res://scripts/sp15_test_context.gd")
 const S = H.S
@@ -9,13 +9,13 @@ var results: Dictionary = {}
 
 func run(host: Control) -> void:
 	root = host
-	for test: Callable in [_entries, _clock, _input, _screen, _reset, _battle, _story, _repeat, _failures]:
+	for test: Callable in [_entries, _clock, _input, _screen, _reset, _battle, _story, _repeat, _failures, _configured_retries, _animation_idle]:
 		await test.call()
 	await h.close()
 	if not h.clean:
 		failures += 1
 	print("[SP-15] assertions=%d failures=%d" % [results.size(), failures])
-	root.get_tree().quit(0 if failures == 0 and results.size() == 40 else 1)
+	root.get_tree().quit(0 if failures == 0 and results.size() == 48 else 1)
 
 func ck(id: int, ok: bool, label: String) -> void:
 	if results.has(id):
@@ -231,3 +231,89 @@ func _failures() -> void:
 		h.ready_panel()
 		both = await h.failed_rebuild(after_commit) and both
 	ck(38, both, "failed_rebuild_is_retryable")
+
+
+var _fix_configuration_restored: bool = true
+
+func _configured_retry(uses: int, maximum: float, damaged: bool = false) -> bool:
+	var saved_knobs: Dictionary = GameState._knobs.duplicate(true)
+	var saved_max: float = GameState.vital_max
+	var saved_valid: bool = GameState.configuration_valid
+	var saved_error: String = GameState.configuration_error
+	await h.fresh(root)
+	var config: Dictionary = saved_knobs.duplicate(true)
+	config["battle_item_uses"] = uses
+	config["vital_max"] = maximum
+	var loaded: bool = GameState.load_base_configuration(config)
+	var factory_before: Callable = h.service.battle_factory
+	h.service.battle_factory = func():
+		var actor: Control = load("res://scenes/ui/BattlePage.tscn").instantiate()
+		actor.ready.connect(func():
+			actor.load_configuration(config)
+			if damaged:
+				actor.player_hp -= 1
+		, CONNECT_ONE_SHOT)
+		return actor
+	var run: int = GameState.run_id
+	var old_id: int = h.c.battle.get_instance_id()
+	var completed: int = h.service.completed_count
+	h.fail_vital()
+	h.ready_panel()
+	await h.retry_mouse()
+	var ok: bool
+	if damaged:
+		ok = GameState.state == S.S5 and GameState.run_id == run and h.c.battle.get_instance_id() == old_id and not GameState.event_started(&"E11") and h.service.completed_count == completed and not h.service.busy and not h.panel.retry.disabled
+	else:
+		ok = GameState.state == S.S2 and GameState.run_id == run + 1 and h.c.battle.get_instance_id() != old_id and h.c.event_count(&"E11") == 1 and h.c.battle.item_uses == uses and is_equal_approx(GameState.vital_now, maximum) and h.c.map.get_step_count() == 0 and h.c.map.get_current_node_id() == h.c.map._start_id and h.service.completed_count == completed + 1
+	h.service.battle_factory = factory_before
+	GameState._knobs = saved_knobs
+	GameState.vital_max = saved_max
+	GameState.configuration_valid = saved_valid
+	GameState.configuration_error = saved_error
+	await h.close()
+	_fix_configuration_restored = _fix_configuration_restored and GameState._knobs == saved_knobs and GameState.vital_max == saved_max and GameState.configuration_valid == saved_valid and GameState.configuration_error == saved_error and h.clean
+	return loaded and ok
+
+func _configured_retries() -> void:
+	var uses_results: Array[bool] = []
+	for uses: int in [0, 2]:
+		uses_results.append(await _configured_retry(uses, 100.0))
+	ck(41, uses_results.size() == 2 and uses_results.all(func(ok: bool): return ok), "retry_accepts_configured_item_uses")
+	var max_results: Array[bool] = []
+	for maximum: float in [80.0, 120.0]:
+		max_results.append(await _configured_retry(1, maximum))
+	ck(42, max_results.size() == 2 and max_results.all(func(ok: bool): return ok), "retry_restores_configured_vital_max")
+	ck(43, await _configured_retry(1, 100.0, true), "retry_still_rejects_used_candidate")
+	var default_ok: bool = await _configured_retry(1, 100.0)
+	ck(44, default_ok and _fix_configuration_restored, "retry_config_fixture_restored")
+
+func _animation_idle() -> void:
+	await h.fresh(root)
+	GameState.vital_now = 0.0 # 不使用会主动停process的h.fail_vital夹具。
+	var running: bool = h.panel.is_processing() and h.panel.active
+	h.panel.advance_time(2.0)
+	var terminal: bool = running and h.panel.ready_for_retry and h.panel.elapsed == 2.0 and not h.panel.is_processing() and not h.panel.retry.disabled
+	var left: Control = h.panel.get_node("Screen/ChannelMask/LeftEdge")
+	var mask: Control = h.panel.get_node("Screen/ChannelMask")
+	terminal = terminal and is_equal_approx(left.offset_right, mask.size.x * 0.5)
+	ck(45, terminal, "failure_animation_stops_at_end")
+	var count: int = h.panel._draw_frame_count
+	var signature: Array = h.frame_signature()
+	await root.get_tree().process_frame
+	await root.get_tree().process_frame
+	h.panel.advance_time(1.0)
+	h.panel.advance_time(10.0)
+	ck(46, h.panel._draw_frame_count == count and signature == h.frame_signature() and not h.panel.is_processing(), "failure_idle_does_not_redraw")
+	var size_before: Vector2 = h.panel.screen.size
+	h.panel.screen.size = size_before + Vector2(40, 20)
+	await root.get_tree().process_frame
+	var points: PackedVector2Array = h.panel.get_node("Screen/CutMarker").points
+	var resize_ok: bool = h.panel._draw_frame_count > count and points.size() == 9 and is_equal_approx(points[0].x, h.panel.screen.size.x * 0.5 - 56.0) and is_equal_approx(left.offset_right, mask.size.x * 0.5) and not h.panel.is_processing() and h.panel.elapsed == 2.0 and not h.panel.retry.disabled
+	ck(47, resize_ok, "failure_resize_still_redraws")
+	h.panel.screen.size = size_before
+	h.panel.start()
+	var restarted: bool = h.panel.is_processing() and h.panel.elapsed == 0.0 and h.panel.retry.disabled
+	h.panel.advance_time(2.0)
+	var run: int = GameState.run_id
+	await h.retry_mouse()
+	ck(48, restarted and GameState.run_id == run + 1 and GameState.state == S.S2 and h.c.event_count(&"E11") == 1, "failure_restart_and_retry_work")

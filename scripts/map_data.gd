@@ -58,8 +58,29 @@ func _read_header(raw: Dictionary) -> bool:
 		push_error("地图网格尺寸必须是范围内的正整数")
 		return false
 	grid_size = Vector2i(int(grid[0]), int(grid[1]))
-	visual = raw.get("visual", {}).duplicate(true)
+	var source: Dictionary = raw.get("visual", {})
+	var reason: String = validate_visual(source)
+	if not reason.is_empty():
+		push_error(reason)
+		return false
+	visual = source.duplicate(true)
+	for key: String in VISUAL_NUMBERS:
+		if not visual.has(key):
+			visual[key] = 1.0
 	return true
+
+const VISUAL_NUMBERS: Array[String] = ["blue_pulse_period", "point_radius", "line_width", "hover_outline_px", "blue_pulse_amplitude", "hover_brightness"]
+static func validate_visual(source: Dictionary) -> String:
+	for key: String in VISUAL_NUMBERS:
+		var value: Variant = source.get(key, 1.0)
+		if not (value is int or value is float) or not is_finite(float(value)):
+			return "地图视觉参数必须为有限数值：visual.%s" % key
+		if key in ["blue_pulse_amplitude", "hover_brightness"]:
+			if value < 0.0 or value > 1.0:
+				return "地图视觉参数必须在[0,1]内：visual.%s" % key
+		elif value <= 0.0:
+			return "地图视觉参数必须大于零：visual.%s" % key
+	return ""
 
 static func _integer_in_range(value: Variant, minimum: int, maximum: int) -> bool:
 	if not (value is int or value is float):

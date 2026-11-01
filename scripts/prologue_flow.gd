@@ -28,29 +28,44 @@ var _checkpoint_retry_elapsed: float = 0.0
 const CHECKPOINT_RETRY_SECONDS: float = 1.0
 var _battle_id: int = 0
 var _dialogue_inputs: Array[Control] = []
+var dialogue_factory: Callable
+var assembly_ready: bool = false
+var last_error: String = ""
 
-func configure(host: Control) -> void:
+func configure(host: Control) -> bool:
 	if main != null:
-		return
+		return assembly_ready
+	if not GameState.configuration_valid:
+		last_error = GameState.configuration_error
+		return false
 	main = host
 	map = main.get_node("Pages/MapPage/MapArea/CursorContainer/MapGrid")
 	content = main.get_node("Pages/ScenePage/FlowContent")
 	content.configure()
-	GameState.begin_session()
-	GameState.presenter = _present
-	dialogue = preload("res://scenes/ui/DialogueBox.tscn").instantiate()
+	var saved: Dictionary = GameState.capture_session()
+	dialogue = dialogue_factory.call() if dialogue_factory.is_valid() else preload("res://scenes/ui/DialogueBox.tscn").instantiate()
 	main.get_node("Overlay").add_child(dialogue)
 	main._dialogue = dialogue
+	if not dialogue.data_valid:
+		last_error = dialogue.last_error
+		return _abort_configuration(saved)
+	var points := preload("res://scripts/points.gd").new()
+	main.get_node("Overlay").add_child(points)
+	points.configure(main, dialogue)
+	if not points._valid or not points.get_dialogue().data_valid or not points.get_dialogue().get_lines().has("T157"):
+		last_error = "序章调查或T157台词数据无效"
+		return _abort_configuration(saved, points)
+	GameState.begin_session()
+	GameState.presenter = _present
 	dialogue.sequence_finished.connect(_on_sequence_finished)
 	dialogue.stage_started.connect(_on_stage_started)
 	dialogue.stage_finished.connect(_on_stage_finished)
 	dialogue.bind_s0(main.get_node("Pages/ScenePage"), finish_s0)
-	var points := preload("res://scripts/points.gd").new()
-	main.get_node("Overlay").add_child(points)
-	points.configure(main, dialogue)
+	if not map.bind_progress(points):
+		last_error = "序章地图缺少T157"
+		return _abort_configuration(saved, points)
 	_bind_dialogue_input(dialogue)
 	_bind_dialogue_input(points.get_dialogue())
-	map.bind_progress(points)
 	map._interactions.investigated.connect(_on_investigated)
 	GameState.state_changed.connect(_on_state_changed)
 	GameState.progress_changed.connect(_on_progress)
@@ -61,9 +76,26 @@ func configure(host: Control) -> void:
 	add_child(recovery)
 	recovery.configure(self)
 	_setup_safehouse()
+	assembly_ready = true
 	_present(GameState.state)
 	_play_event(&"E1", range(101, 107))
+	# 仅新流程成功提交后恢复；正常启动已开启处理，不重复切换。
+	if not GameState.is_processing():
+		GameState.set_process(true)
 	_start_requested_test.call_deferred()
+	return true
+
+func _abort_configuration(saved: Dictionary, points: Node = null) -> bool:
+	if is_instance_valid(points):
+		points.free()
+	if is_instance_valid(dialogue):
+		dialogue.free()
+	main._dialogue = null
+	dialogue = null
+	main = null
+	GameState.begin_session(GameState.State.S0, saved)
+	assembly_ready = false
+	return false
 
 func _setup_safehouse() -> void:
 	safe_room = content.get_node("Safehouse")
@@ -98,7 +130,8 @@ func _start_requested_test() -> void:
 	elif args.has("--sp14-self-test") and not get_tree().has_meta("sp14_runner"):
 		get_tree().set_meta("sp14_runner", true)
 		await load("res://scripts/sp14_selftest.gd").new().run(main)
-	elif args.has("--sp11-self-test"):
+	elif args.has("--sp11-self-test") and not get_tree().has_meta("sp11_runner"):
+		get_tree().set_meta("sp11_runner", true)
 		main._run_sp11_self_test()
 
 func _present(target: int) -> bool:
@@ -120,19 +153,32 @@ func _present(target: int) -> bool:
 	return true
 
 func request_page(page: StringName) -> bool:
-	return main.show_page(page)
+	return assembly_ready and GameState.configuration_valid and main.show_page(page)
 
-func _play_event(id: StringName, numbers: Array) -> void:
+func _play_event(id: StringName, numbers: Array) -> bool:
+	var keys: Array = []
+	for number: int in numbers:
+		keys.append("T%d" % number)
+	var reason: String = dialogue.validate_sequence(keys)
+	if not reason.is_empty():
+		dialogue.last_error = reason
+		return false
+	var previous_event: StringName = _sequence_event
+	var previous_run: int = _sequence_run
+	var previous_skip: bool = dialogue.skip_allowed
 	if not GameState.record_event(id):
-		return
+		return false
 	_sequence_event = id
 	_sequence_run = GameState.run_id
 	if id == &"E1":
 		dialogue.skip_allowed = false
-	var keys: Array = []
-	for number: int in numbers:
-		keys.append("T%d" % number)
-	dialogue.play_seq(keys)
+	if not dialogue.play_seq(keys):
+		GameState.cancel_started_event(id, _sequence_run)
+		_sequence_event = previous_event
+		_sequence_run = previous_run
+		dialogue.skip_allowed = previous_skip
+		return false
+	return true
 
 func _on_sequence_finished(skipped: bool) -> void:
 	var id: StringName = _sequence_event
@@ -145,7 +191,9 @@ func _on_sequence_finished(skipped: bool) -> void:
 			s1_finished.emit()
 			request_page(&"MapPage")
 			dialogue.skip_allowed = false
-			dialogue.play_seq(["T130", "T131"])
+			if not dialogue.play_seq(["T130", "T131"]):
+				last_error = dialogue.last_error
+				return
 		&"E9":
 			_pending_checkpoint_run = _sequence_run
 			_retry_checkpoint()
@@ -316,7 +364,7 @@ func _fresh_session(actor: Control, grid: Control) -> bool:
 		var item: Control = grid.get_interactable(id)
 		if item != null and item.read:
 			return false
-	return grid.get_current_node_id() == grid._start_id and GameState.vital_now == 100.0
+	return grid.get_current_node_id() == grid._start_id and GameState.configuration_valid and GameState.vital_max > 0.0 and is_equal_approx(GameState.vital_now, GameState.vital_max)
 
 func request_title() -> bool:
 	if GameState.state != GameState.State.S5:

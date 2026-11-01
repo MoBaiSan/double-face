@@ -31,7 +31,10 @@ var _vital_now: float = 0.0
 var _frozen: bool = false
 var _drain_accum: float = 0.0
 var _point_pay_calls: int = 0
+const BASE_KNOBS: Array[String] = ["vital_max", "time_drain_per_second", "step_cost", "required_point_cost", "optional_point_cost", "battle_win_recovery", "threshold_full", "threshold_low", "threshold_critical", "drain_flush_threshold"]
 var _knobs: Dictionary = {}
+var configuration_valid: bool = false
+var configuration_error: String = ""
 
 var vital_now: float:
 	get:
@@ -41,7 +44,8 @@ var vital_now: float:
 
 
 func _ready() -> void:
-	_load_knobs()
+	if not _load_knobs():
+		return
 	vital_max = _knob("vital_max")
 	_vital_now = vital_max
 	set_process(true)
@@ -55,7 +59,7 @@ func _process(delta: float) -> void:
 
 ## 按经过时间累积嗓子消耗；由自动处理或测试入口在非冻结期间调用。
 func drain_time(delta: float) -> void:
-	if _state not in [State.S2, State.S3] or _frozen or delta <= 0.0:
+	if not configuration_valid or _state not in [State.S2, State.S3] or _frozen or delta <= 0.0:
 		return
 	_drain_accum += delta * _knob("time_drain_per_second")
 	if _drain_accum < _knob("drain_flush_threshold"):
@@ -67,7 +71,7 @@ func drain_time(delta: float) -> void:
 
 ## 扣除一次移动费用；地图光标确认走格时调用，冻结期间拒绝扣除。
 func pay_step() -> bool:
-	if _frozen:
+	if not configuration_valid or _frozen:
 		return false
 	return _spend(_knob("step_cost"), &"step")
 
@@ -75,7 +79,7 @@ func pay_step() -> bool:
 ## 扣除一次必查或可选调查费用；调查确认时传入对应类型调用。
 func pay_point(kind: StringName) -> bool:
 	_point_pay_calls += 1
-	if _frozen:
+	if not configuration_valid or _frozen:
 		return false
 	var cost: float = get_point_cost(kind)
 	return cost >= 0.0 and _spend(cost, &"point_" + kind)
@@ -118,7 +122,7 @@ func is_frozen() -> bool:
 	return _frozen
 
 
-## 结算战斗胜利回 10 点；战斗胜利事件发生时调用且自动截断上限。
+## 按 battle_win_recovery 结算战斗胜利恢复；胜利事件发生时调用且自动截断上限。
 func on_battle_win() -> void:
 	var alive_before: bool = _vital_now > 0.0
 	if not alive_before:
@@ -179,17 +183,59 @@ func _set_vital(value: float, reason: StringName) -> void:
 		request_transition(&"failure")
 
 
-func _load_knobs() -> void:
-	var text: String = FileAccess.get_file_as_string(KNOBS_PATH)
-	var parsed: Variant = JSON.parse_string(text)
-	if not parsed is Dictionary:
-		push_error("SP-05 knobs 无法解析：%s" % KNOBS_PATH)
-		return
-	_knobs = parsed as Dictionary
+func _load_knobs() -> bool:
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(KNOBS_PATH))
+	if not load_base_configuration(parsed):
+		push_error("SP-05 knobs 无法加载：%s" % configuration_error)
+		return false
+	return true
 
+static func validate_base_configuration(data: Variant) -> String:
+	if not data is Dictionary:
+		return "基础配置根必须是对象"
+	for key: String in BASE_KNOBS:
+		if not data.has(key):
+			return "基础配置缺少键：%s" % key
+		var value: Variant = data[key]
+		if not (value is int or value is float) or not is_finite(float(value)):
+			return "基础配置必须为有限数值：%s" % key
+		if key in ["time_drain_per_second", "battle_win_recovery"]:
+			if float(value) < 0.0:
+				return "基础配置不得为负：%s" % key
+		elif float(value) <= 0.0:
+			return "基础配置必须大于零：%s" % key
+	if float(data["drain_flush_threshold"]) <= VITAL_EPSILON:
+		return "基础配置必须大于数值精度：drain_flush_threshold"
+	if not (data["threshold_critical"] < data["threshold_low"] and data["threshold_low"] < data["threshold_full"] and data["threshold_full"] <= data["vital_max"]):
+		return "基础阈值顺序错误：threshold_critical < threshold_low < threshold_full <= vital_max"
+	return ""
+
+func load_base_configuration(data: Variant) -> bool:
+	configuration_error = validate_base_configuration(data)
+	configuration_valid = configuration_error.is_empty()
+	if not configuration_valid:
+		_knobs.clear()
+		vital_max = 0.0
+		_vital_now = 0.0
+		_drain_accum = 0.0
+		set_process(false)
+		return false
+	_knobs = data.duplicate(true)
+	vital_max = float(_knobs["vital_max"])
+	_vital_now = vital_max
+	_drain_accum = 0.0
+	return true
 
 func _knob(name: String) -> float:
-	return float(_knobs.get(name, 0.0))
+	if not configuration_valid:
+		return 0.0 # 无效状态仅供静止UI安全查询；所有行动入口均拒绝。
+	if not _knobs.has(name):
+		configuration_error = "基础配置缺少键：%s" % name
+		configuration_valid = false
+		set_process(false)
+		push_error(configuration_error)
+		return 0.0
+	return float(_knobs[name])
 
 ## 只绑定已验证的五个必查点；配置缺失或不完整时出口保持关闭。
 func configure_progress(definitions: Dictionary, map_ids: Dictionary) -> void:
@@ -276,6 +322,8 @@ func begin_session(initial: State = State.S0, saved: Dictionary = {}) -> void:
 		for key: String in saved:
 			set(key, saved[key])
 		return
+	if not configuration_valid:
+		return
 	run_id += 1
 	eaten_used = false
 	_state = initial
@@ -300,7 +348,7 @@ func capture_session() -> Dictionary:
 	return saved
 
 func can_map_action() -> bool:
-	return _state in [State.S2, State.S3] and not _frozen and _vital_now > 0.0
+	return configuration_valid and _state in [State.S2, State.S3] and not _frozen and _vital_now > 0.0
 
 func can_investigate() -> bool:
 	return can_map_action()
@@ -321,6 +369,12 @@ func record_event(id: StringName, completed: bool = false, session: int = -1) ->
 		return false
 	_events[id] = value
 	event_changed.emit(id, completed, run_id)
+	return true
+
+func cancel_started_event(id: StringName, session: int) -> bool:
+	if session != run_id or int(_events.get(id, 0)) != 1:
+		return false
+	_events.erase(id)
 	return true
 
 func _event_allowed(id: StringName) -> bool:

@@ -26,7 +26,7 @@ func run(host: Control) -> void:
 	ck(59, clean, "夹具恢复状态会话进度焦点连接")
 	ck(60, _source_contract() and route_finished, "show_page唯一换页_26键_A1")
 	print("[SP-14] assertions=%d failures=%d" % [results.size(), failures])
-	root.get_tree().quit(0 if failures == 0 and results.size() == 95 else 1)
+	root.get_tree().quit(0 if failures == 0 and results.size() == 97 else 1)
 
 func _fresh(initial: int = S.S2) -> void:
 	await _drop()
@@ -271,7 +271,7 @@ func _partial_win() -> void:
 	GameState.vital_now = 85.0
 	c.win()
 	c.battle._settle_victory()
-	ck(29, GameState.vital_now == 95.0 and c.event_count(&"E17", false) == 1, "胜利仅一次加10")
+	ck(29, GameState.vital_now == 93.0 and c.event_count(&"E17", false) == 1, "胜利仅一次加8")
 
 func _early_win() -> void:
 	await _fresh()

@@ -14,6 +14,7 @@ var busy: bool = false
 var start_count: int = 0
 var accept_down: bool = false
 var _accept_press: bool = false
+var _draw_frame_count: int = 0
 
 func _ready() -> void:
 	retry.pressed.connect(_on_retry)
@@ -38,12 +39,15 @@ func _process(delta: float) -> void:
 	advance_time(delta)
 
 func advance_time(delta: float) -> void:
-	if not active or not visible or busy or not is_finite(delta) or delta <= 0.0:
+	if not active or not visible or busy or ready_for_retry or not is_finite(delta) or delta <= 0.0:
 		return
 	elapsed = minf(FAIL_SECONDS, elapsed + delta)
+	if elapsed + 0.000001 >= FAIL_SECONDS:
+		elapsed = FAIL_SECONDS
 	_draw_frame()
 	if elapsed + 0.000001 >= FAIL_SECONDS and not ready_for_retry:
 		ready_for_retry = true
+		set_process(false)
 		actions.show()
 		retry.disabled = false
 		retry.grab_focus()
@@ -51,6 +55,7 @@ func advance_time(delta: float) -> void:
 func _draw_frame() -> void:
 	if not is_node_ready():
 		return
+	_draw_frame_count += 1
 	var cut: float = clampf(elapsed / CUT_SECONDS, 0.0, 1.0)
 	var center: Vector2 = screen.size * Vector2(0.5, 0.28)
 	var wave: PackedVector2Array = []

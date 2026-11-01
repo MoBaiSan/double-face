@@ -29,7 +29,12 @@ var _sp04_failures: int = 0
 var _force_layout_fail: bool = false
 var _dialogue: Control
 var _flow: Node
+var dialogue_factory: Callable
+var startup_blocked: bool = false
 func _ready() -> void:
+	if not GameState.configuration_valid:
+		_block_startup()
+		return
 	for page_name: StringName in PAGE_NAMES:
 		var page: Control = _pages_root.get_node_or_null(NodePath(page_name)) as Control
 		if page == null:
@@ -42,7 +47,9 @@ func _ready() -> void:
 		_connect_page_nav(_pages[page_name] as Control)
 	_page_switch_bar.configure(func(page: StringName): return _flow.request_page(page))
 	show_page(PAGE_NAMES[0])
-	_setup_dialogue()
+	if not _setup_dialogue():
+		_block_startup()
+		return
 	print("[godot-project] ready")
 	if DisplayServer.get_name() == "headless":
 		var user_args: PackedStringArray = OS.get_cmdline_user_args()
@@ -81,6 +88,8 @@ func _print_sp04_demo(prefix: String, bar: VitalBar) -> void:
 		prefix, bar.get_flash_count(), bar.get_fill_top(), str(bar.size.y > bar.size.x)])
 ## 显示指定常驻页并切换空数据引用；未知页返回 false 且不改变当前页。
 func show_page(name: StringName) -> bool:
+	if startup_blocked or not GameState.configuration_valid:
+		return false
 	if GameState.state == GameState.State.S5 and not (_flow != null and _flow.presenting):
 		return false
 	if $Pages/BattlePage.turn_phase == $Pages/BattlePage.State.DEFEATED and name != &"BattlePage":
@@ -382,16 +391,27 @@ func _run_sp07_self_test() -> void:
 	var failures: int = await preload("res://scripts/sp07_selftest.gd").new().run(self)
 	get_tree().quit(0 if failures == 0 else 1)
 
-func _setup_dialogue() -> void:
+func _setup_dialogue() -> bool:
 	_flow = preload("res://scripts/prologue_flow.gd").new()
 	add_child(_flow)
-	_flow.configure(self)
+	_flow.dialogue_factory = dialogue_factory
+	if not _flow.configure(self):
+		return false
 	var tutorial := preload("res://scripts/tutorial_state.gd").new()
 	$Overlay.add_child(tutorial)
 	tutorial.configure(self)
 	var captions := preload("res://scripts/inside_captions.gd").new()
 	$Overlay.add_child(captions)
 	captions.configure(self)
+	return true
+
+func _block_startup() -> void:
+	startup_blocked = true
+	$Pages.process_mode = Node.PROCESS_MODE_DISABLED
+	$Pages.hide()
+	$Overlay/PageSwitchBar.hide()
+	set_process_input(false)
+	set_process_unhandled_key_input(false)
 
 func _run_sp11_self_test() -> void:
 	var failures: int = await preload("res://scripts/sp11_selftest.gd").new().run(self, _dialogue)

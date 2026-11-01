@@ -43,11 +43,13 @@ func _ready() -> void:
 	if OS.get_cmdline_user_args().has("--sp06-self-test"):
 		call_deferred("_run_self_test")
 func _process(delta: float) -> void:
+	if not _playable:
+		return
 	_pulse_time = fmod(_pulse_time + delta, _float_visual("blue_pulse_period"))
 	queue_redraw()
 func _on_visibility_changed() -> void: _sync_visibility_processing()
 func _sync_visibility_processing() -> void:
-	var active: bool = is_visible_in_tree()
+	var active: bool = is_visible_in_tree() and _playable
 	set_process(active)
 	set_process_unhandled_input(active)
 ## 将光标恢复到入口并建立初始两点揭开集合；进入里侧时调用。
@@ -76,7 +78,7 @@ func reset_map() -> void:
 	queue_redraw()
 ## 地图移动统一入口：首次成功到达扣步费，回访免费，冻结或归零始终拒绝。
 func try_move_to(node_id: StringName) -> bool:
-	if not GameState.can_map_action():
+	if not _playable or not GameState.can_map_action():
 		return false
 	if not _points.has(node_id) or not _revealed.has(node_id):
 		return false
@@ -179,25 +181,30 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		try_move_to(target)
 		get_viewport().set_input_as_handled()
 func _load_map() -> void:
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(MAP_PATH))
-	if not parsed is Dictionary:
-		push_error("SP-06 map data parse failed: %s" % MAP_PATH)
-		_playable = false
-		return
-	var raw_map: Dictionary = parsed as Dictionary
-	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map)
+	_apply_map(JSON.parse_string(FileAccess.get_file_as_string(MAP_PATH)))
+
+func _apply_map(raw: Variant) -> bool:
+	_start_fallback_warning = false
+	var data = MAP_DATA_SCRIPT.from_dictionary(raw)
 	if data == null:
 		_playable = false
 		_points.clear()
-		return
+		_visual.clear()
+		_start_id = &""
+		_step_count = 0
+		_pulse_time = 0.0
+		reset_map()
+		_sync_visibility_processing()
+		return false
 	_start_fallback_warning = data.used_fallback
 	_grid_size = Vector2(data.grid_size)
 	_start_id = data.start_id
 	_visual = data.visual
 	_points = data.points.duplicate(true)
 	_playable = _points.has(_start_id)
-	if not _playable:
-		push_error("SP-06 map is unplayable: start_id=%s" % _start_id)
+	reset_map()
+	_sync_visibility_processing()
+	return _playable
 func _resolve_start_id(raw_map: Dictionary) -> StringName:
 	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map)
 	_start_fallback_warning = data != null and data.used_fallback
@@ -345,18 +352,7 @@ func _draw_current_marker() -> void:
 func _should_draw_outline(point_id: StringName, point: Dictionary) -> bool: return point_id == _current_id or point_id == _hovered_id or str(point.get("color", "plain")) == "white"
 func get_last_gui_input_consumed_for_test() -> bool: return _last_gui_input_consumed
 func load_map_for_test(raw_map: Dictionary) -> bool:
-	_start_fallback_warning = false
-	var data = MAP_DATA_SCRIPT.from_dictionary(raw_map)
-	if data == null:
-		return false
-	_start_fallback_warning = data.used_fallback
-	_grid_size = Vector2(data.grid_size)
-	_start_id = data.start_id
-	_visual = data.visual
-	_points = data.points.duplicate(true)
-	_playable = _points.has(_start_id)
-	reset_map()
-	return _playable
+	return _apply_map(raw_map)
 func did_start_fallback_for_test() -> bool: return _start_fallback_warning
 func resolve_start_id_for_test(raw_map: Dictionary) -> StringName: return _resolve_start_id(raw_map)
 func get_start_id_for_test() -> StringName: return _start_id
@@ -373,15 +369,24 @@ func _run_self_test() -> void:
 	var failures: int = await preload("res://scripts/map_grid_selftest.gd").new().run(self)
 	get_tree().quit(0 if failures == 0 else 1)
 func get_interactable(point_id: StringName) -> Control: return _interactions.get_interactable(point_id) if _interactions != null else null
-func bind_progress(points: Node) -> void:
+func bind_progress(points: Node) -> bool:
+	var entry: Dictionary = points.get_dialogue().get_lines().get("T157", {})
+	if not entry.get("text") is String or str(entry.get("text", "")).is_empty():
+		push_error("地图进度缺少台词：T157")
+		return false
+	var arrival: String = entry["text"]
+	if _interactions.investigated.is_connected(_record_progress):
+		_arrival_text = arrival
+		return true
 	GameState.configure_progress(points.get_definitions(), points.MAP_IDS)
-	_arrival_text = str(points.get_dialogue().get_lines()["T157"]["text"])
+	_arrival_text = arrival
 	_interactions.investigated.connect(_record_progress)
 	moved.connect(_refresh_progress_ui)
 	for event: Signal in [GameState.progress_changed, GameState.vital_changed, GameState.frozen_changed, GameState.exit_confirmed, visibility_changed]:
 		event.connect(_refresh_progress_ui)
 	get_parent().get_parent().get_parent().get_node("ExitConfirm").pressed.connect(_confirm_exit)
 	_refresh_progress_ui()
+	return true
 func _record_progress(map_id: StringName) -> void: GameState.record_investigated(map_id)
 func _confirm_exit() -> bool: return GameState.try_confirm_exit(_current_id == _start_id, is_visible_in_tree())
 func _refresh_progress_ui(_a: Variant = null, _b: Variant = null, _c: Variant = null) -> void:

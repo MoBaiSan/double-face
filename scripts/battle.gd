@@ -114,7 +114,7 @@ func _k(suffix: String) -> float:
 	return float(_knobs["battle_" + suffix])
 
 func is_fresh_for_retry() -> bool:
-	return _valid and not _started and turn_phase == State.INACTIVE and item_uses == 1 \
+	return _valid and not _started and turn_phase == State.INACTIVE and item_uses == int(_k("item_uses")) \
 		and enemy_hp == int(_k("enemy_hp_max")) and player_hp == int(_k("player_hp_max"))
 
 func configure(main: Control) -> void:

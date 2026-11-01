@@ -34,6 +34,7 @@ func run(main: Control, player: Control) -> int:
 	_check_s0()
 	_check_caption()
 	_player.line_started.disconnect(_on_line_started)
+	await _fix_dialogue_cases()
 	print("[SP-11] failures=%d" % _failures)
 	scope.restore()
 	return _failures
@@ -344,3 +345,233 @@ func _check(passed: bool, label: String) -> void:
 	print("[SP-11] %s %s" % ["PASS" if passed else "FAIL", label])
 	if not passed:
 		_failures += 1
+
+
+## FIX-02：均用完整原表的内存副本，不改数据文件。
+class RejectingPlayer extends "res://scripts/dialogue.gd":
+	var reject_requests: bool = true
+	var play_calls: int = 0
+	func play_seq(keys: Array) -> bool:
+		play_calls += 1
+		if reject_requests:
+			last_error = "selftest actual play rejected"
+			return false
+		return super.play_seq(keys)
+
+func _original_lines() -> Array:
+	return JSON.parse_string(FileAccess.get_file_as_string("res://data/lines.json")) as Array
+
+func _without_line(data: Array, id: String) -> Array:
+	return data.filter(func(entry: Dictionary): return entry.id != id)
+
+func _fix_dialogue_cases() -> void:
+	var raw: Array = _original_lines()
+	var required_ok: bool = PLAYER_SCRIPT.validate_required_ids(raw).is_empty()
+	var checked: int = 0
+	for id: String in ["T101", "T157", "T193"]:
+		var missing: Array = _without_line(raw, id)
+		var reason: String = PLAYER_SCRIPT.validate_required_ids(missing)
+		var extra: Dictionary = raw[0].duplicate(true)
+		extra.id = "T999"
+		missing.append(extra)
+		required_ok = required_ok and reason.contains(id) and PLAYER_SCRIPT.validate_lines(missing).is_empty()
+		required_ok = required_ok and missing.size() == raw.size() and PLAYER_SCRIPT.validate_required_ids(missing).contains(id)
+		checked += 1
+	_check(required_ok and checked == 3, "prologue_required_line_ids")
+	_check(await _missing_assembly(raw), "missing_lines_block_assembly")
+	var event_results: Array[bool] = []
+	for actual_reject: bool in [false, true]:
+		event_results.append(await _event_retry_case(actual_reject))
+	_check(event_results.size() == 2 and not event_results.has(false), "failed_event_play_is_retryable")
+	_check(await _map_line_binding(raw), "map_bind_requires_t157")
+	var stage_results: Array[bool] = []
+	for stage: StringName in [&"READING", &"R2", &"R3"]:
+		stage_results.append(await _s0_pending_case(stage, "", raw))
+	for guard: String in ["stale_run", "busy_player"]:
+		stage_results.append(await _s0_pending_case(&"R2", guard, raw))
+	_check(stage_results.size() == 5 and not stage_results.has(false), "s0_stage_failure_releases_locks")
+
+func _missing_assembly(raw: Array) -> bool:
+	var scope = CR_CONTEXT.new()
+	scope.remember(_main)
+	_main.hide()
+	_main.process_mode = Node.PROCESS_MODE_DISABLED
+	GameState.begin_session(GameState.State.S0)
+	GameState.set_process(false)
+	var checked: int = 0
+	var passed: bool = true
+	for id: String in ["T101", "T157", "T193"]:
+		var before: Dictionary = GameState.capture_session()
+		var connections: Array = GameState.get_signal_connection_list(&"event_changed")
+		var missing: Array = _without_line(raw, id)
+		var candidate: Control = load("res://scenes/Main.tscn").instantiate()
+		candidate.dialogue_factory = func():
+			var player: Control = load("res://scenes/ui/DialogueBox.tscn").instantiate()
+			player.source_data = missing
+			return player
+		_main.get_tree().root.add_child(candidate)
+		var grid: Control = candidate.get_node("Pages/MapPage/MapArea/CursorContainer/MapGrid")
+		var battle: Control = candidate.get_node("Pages/BattlePage")
+		var battle_state: int = battle.turn_phase
+		battle.submit_command(0)
+		var rejected: bool = candidate.startup_blocked and not candidate._flow.assembly_ready
+		rejected = rejected and candidate._flow.last_error.contains(id) and candidate._dialogue == null
+		rejected = rejected and not candidate._flow.configure(candidate)
+		rejected = rejected and not GameState.event_started(&"E1") and not GameState.event_done(&"E1")
+		rejected = rejected and not candidate.show_page(&"MapPage") and not grid.try_move_to(&"c1")
+		rejected = rejected and battle.turn_phase == battle_state and candidate.get_node("Pages").process_mode == Node.PROCESS_MODE_DISABLED
+		candidate.free()
+		rejected = rejected and GameState.capture_session() == before
+		rejected = rejected and GameState.get_signal_connection_list(&"event_changed") == connections
+		passed = passed and rejected
+		checked += 1
+	var restored: bool = scope.restore()
+	var healthy = CR_CONTEXT.new()
+	await healthy.create(_main)
+	var accepted: bool = healthy.flow.assembly_ready and not healthy.main.startup_blocked and GameState.event_started(&"E1")
+	var healthy_restored: bool = await healthy.close()
+	return passed and checked == 3 and restored and accepted and healthy_restored
+
+func _event_retry_case(actual_reject: bool) -> bool:
+	var c = CR_CONTEXT.new()
+	await c.create(_main)
+	var player: Control = c.main._dialogue
+	if actual_reject:
+		player._set_active(false)
+		player = load("res://scenes/ui/DialogueBox.tscn").instantiate()
+		player.set_script(RejectingPlayer)
+		c.main.get_node("Overlay").add_child(player)
+		c.main._dialogue = player
+		c.flow.dialogue = player
+		player.sequence_finished.connect(c.flow._on_sequence_finished)
+	# 不经过 run 开头的 E1 完成初始化；新会话必须独立证明未开始。
+	CR_CONTEXT.enter_domain(c.main, GameState.State.S0)
+	c.flow._sequence_run = -1
+	var run_before: int = GameState.run_id
+	var skip_before: bool = player.skip_allowed
+	var sequence_before: int = c.flow._sequence_run
+	var checkpoint_before: Array = [c.flow.checkpoint.writes, c.flow.checkpoint.attempts]
+	var finished: Array = []
+	c.watch(player.sequence_finished, func(skipped: bool): finished.append(skipped))
+	var precondition: bool = not GameState.event_started(&"E1") and not GameState.event_done(&"E1")
+	precondition = precondition and not player.is_playing() and c.flow._sequence_event == &""
+	var saved_line: Dictionary = player._lines["T101"].duplicate(true)
+	if not actual_reject:
+		player._lines.erase("T101")
+	var preflight: String = player.validate_sequence(["T101", "T102", "T103", "T104", "T105", "T106"])
+	var rejected: bool = not c.flow._play_event(&"E1", range(101, 107))
+	var rolled_back: bool = not GameState.event_started(&"E1") and not GameState.event_done(&"E1")
+	rolled_back = rolled_back and GameState.run_id == run_before and finished.is_empty() and c.event_count(&"E1") == 0
+	rolled_back = rolled_back and c.flow._sequence_event == &"" and c.flow._sequence_run == sequence_before
+	rolled_back = rolled_back and player.skip_allowed == skip_before and not player.is_playing()
+	if actual_reject:
+		rejected = rejected and preflight.is_empty() and player.play_calls == 1
+		player.reject_requests = false
+	else:
+		rejected = rejected and preflight.contains("T101") and player.last_error.contains("T101")
+		player._lines["T101"] = saved_line
+	var start_before: int = c.event_count(&"E1", false)
+	var accepted: bool = c.flow._play_event(&"E1", range(101, 107))
+	accepted = accepted and GameState.event_started(&"E1") and not GameState.event_done(&"E1")
+	var duplicate: bool = c.flow._play_event(&"E1", range(101, 107))
+	accepted = accepted and not duplicate and c.event_count(&"E1", false) == start_before + 1 and finished.is_empty()
+	c.finish_sequence(player)
+	var completed: bool = GameState.event_done(&"E1") and c.event_count(&"E1") == 1 and finished == [false]
+	completed = completed and GameState.run_id == run_before and [c.flow.checkpoint.writes, c.flow.checkpoint.attempts] == checkpoint_before
+	var restored: bool = await c.close()
+	var passed: bool = precondition and rejected and rolled_back and accepted and completed and restored
+	if not passed:
+		print("[SP-11] retry case actual=%s pre=%s rejected=%s rollback=%s accepted=%s completed=%s restored=%s" %
+			[actual_reject, precondition, rejected, rolled_back, accepted, completed, restored])
+	return passed
+
+func _map_line_binding(raw: Array) -> bool:
+	var c = CR_CONTEXT.new()
+	await c.create(_main)
+	var player: Control = c.points.get_dialogue()
+	var before: Dictionary = GameState.capture_session()
+	var signals_before: Array = c.map._interactions.investigated.get_connections()
+	var progress_before: Array = GameState.get_signal_connection_list(&"progress_changed")
+	var arrival: String = c.map._arrival_text
+	player._lines.erase("T157")
+	var rejected: bool = not c.map.bind_progress(c.points)
+	rejected = rejected and GameState.capture_session() == before and c.map._arrival_text == arrival
+	rejected = rejected and c.map._interactions.investigated.get_connections() == signals_before
+	rejected = rejected and GameState.get_signal_connection_list(&"progress_changed") == progress_before
+	var loaded: bool = player.load_lines_data(raw)
+	var accepted: bool = c.map.bind_progress(c.points)
+	accepted = accepted and c.map._arrival_text == str(player.get_lines()["T157"]["text"]) and c.map._arrival_text == arrival
+	var restored: bool = await c.close()
+	return rejected and loaded and accepted and restored
+
+func _s0_pending_case(stage: StringName, guard: String, raw: Array) -> bool:
+	var c = CR_CONTEXT.new()
+	await c.create(_main)
+	var player: Control = c.main._dialogue
+	c.finish_sequence(player) # 真实完成初始 E1，不能伪登记。
+	var nav: Control = c.main.get_node("Pages/ScenePage/PageNav")
+	var option: Control = c.main.get_node("Pages/ScenePage/TestOptions/OptionTwo")
+	var item: Control = nav.get_interactable(option)
+	var starts: Array = []
+	var finishes: Array = []
+	var reads: Array = []
+	var activations: Array = []
+	c.watch(player.stage_started, func(id: StringName, _run: int): starts.append(id))
+	c.watch(player.stage_finished, func(id: StringName, _run: int): finishes.append(id))
+	c.watch(item.state_changed, func(): reads.append(item.read))
+	c.watch(item.activated, func(): activations.append(true))
+	GameState.set_process(true)
+	nav.set_process_input(true)
+	var precondition: bool = GameState.event_done(&"E1") and not player.is_playing() and not item.read and not item._progress_confirmed
+	var missing_id: String = {&"READING": "T112", &"R2": "T116", &"R3": "T117"}[stage]
+	if stage == &"READING":
+		player._lines.erase(missing_id)
+	c.click(option) # 真实已有阅读输入入口。
+	if stage == &"R2":
+		player._lines.erase(missing_id)
+		c.finish_sequence(player)
+	elif stage == &"R3":
+		c.finish_sequence(player)
+		player._lines.erase(missing_id)
+		c.finish_sequence(player)
+	var previous: StringName = {&"READING": &"", &"R2": &"READING", &"R3": &"R2"}[stage]
+	var expected_prefix: Array = [] if stage == &"READING" else ([&"READING"] if stage == &"R2" else [&"READING", &"R2"])
+	var failed: bool = player._s0.pending_stage == stage and player._s0.phase == previous and player._s0.last_completed_stage == previous
+	failed = failed and not player._s0._running and not player.is_playing() and GameState.is_processing() and nav.is_processing_input()
+	failed = failed and starts == expected_prefix and finishes == expected_prefix
+	failed = failed and item.read == (stage != &"READING") and item._progress_confirmed == (stage != &"READING")
+	failed = failed and reads.size() == (0 if stage == &"READING" else 1) and activations.size() == reads.size()
+	var resumed: bool = false
+	if guard != "":
+		var old_run: int = player._s0._run_id
+		var active_key: String = ""
+		if guard == "stale_run":
+			GameState.begin_session(GameState.State.S0)
+			precondition = precondition and old_run != GameState.run_id
+		else:
+			precondition = precondition and player.play_seq(["T101"])
+			active_key = player.get_current_key()
+		var loaded: bool = player.load_lines_data(raw)
+		resumed = loaded and not player.last_resume_accepted and player._s0.pending_stage == stage
+		resumed = resumed and starts == expected_prefix and finishes == expected_prefix and not player._s0._running
+		resumed = resumed and (not player.is_playing() if guard == "stale_run" else player.is_playing() and player.get_current_key() == active_key)
+	else:
+		# 只走生产加载提交后的自动续播，不调用 _start，不清 phase、不重发阅读。
+		var loaded: bool = player.load_lines_data(raw)
+		resumed = loaded and player.last_resume_accepted and player._s0.pending_stage == &"" and player._s0.phase == stage
+		resumed = resumed and starts.size() == expected_prefix.size() + 1 and starts.back() == stage
+		for attempt: int in range(6):
+			if GameState.state != GameState.State.S0 or not player.is_playing():
+				break
+			c.finish_sequence(player)
+		resumed = resumed and starts == [&"READING", &"R2", &"R3", &"R4"] and finishes == starts
+		resumed = resumed and reads == [true] and activations == [true] and item.read and item._progress_confirmed
+		resumed = resumed and GameState.state == GameState.State.S1 and player._s0.last_completed_stage == &"R4"
+		for id: StringName in [&"E2", &"E3", &"E4"]:
+			resumed = resumed and GameState.event_done(id) and c.event_count(id) == 1 and c.event_count(id, false) == 1
+	var restored: bool = await c.close()
+	var passed: bool = precondition and failed and resumed and restored
+	if not passed:
+		print("[SP-11] stage case %s/%s pre=%s failed_state=%s resumed=%s restored=%s starts=%s finishes=%s" %
+			[stage, guard, precondition, failed, resumed, restored, starts, finishes])
+	return passed

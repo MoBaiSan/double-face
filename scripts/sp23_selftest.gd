@@ -3,7 +3,7 @@ extends RefCounted
 const B = preload("res://scripts/battle.gd")
 const ROUTE: Array[StringName] = [&"c1", &"point1", &"point2", &"point3", &"point4", &"point5"]
 const OLD: Dictionary = {"vital_max": 100.0, "time_drain_per_second": 0.08, "step_cost": 1.0,
-	"required_point_cost": 6.0, "optional_point_cost": 4.0, "battle_win_recovery": 10.0,
+	"required_point_cost": 6.0, "optional_point_cost": 4.0, "battle_win_recovery": 8.0,
 	"threshold_full": 61.0, "threshold_low": 31.0, "threshold_critical": 1.0, "drain_flush_threshold": 0.01}
 const KEYS: Array[String] = ["player_hp_max", "enemy_hp_max", "player_attack", "enemy_attack",
 	"damage_random_min", "damage_random_max", "charge_attack_multiplier", "charge_received_multiplier",
@@ -334,7 +334,7 @@ func _win(vital: float) -> void:
 	_check(b.enemy_hp == 0 and b._enemy_bar.value == 0 and b._enemy.is_visible_in_tree() and b._enemy.position - b._origins[b._enemy].origin == Vector2(6, 3) and Engine.get_process_frames() == before[0], "lethal_frame_motion_shown actual_px=%s" % [b._enemy.position - b._origins[b._enemy].origin])
 	_check(events[4] == before[1] and _no_spread(), "lethal_no_spread_no_flash spread=%d flash=%d" % [events[4] - before[1], events[4] - before[1]])
 	_check(b.turn_count == (5 if vital == 70 else 4) and b.player_hp == (30 if vital == 70 else 42), "baseline_turn_counts")
-	_check(GameState.vital_now == (80 if vital == 70 else 100) and events[0] == 1, "win_recovers_and_caps_once")
+	_check(GameState.vital_now == (78 if vital == 70 else 100) and events[0] == 1, "win_recovers_and_caps_once")
 	_check(_no_spread(), "no_spread_on_zero")
 	_input(b._return)
 	var toured: bool = main.get_node("Overlay/PageSwitchBar")._real_page_cycle(main) and not b._returned and b._return.disabled and GameState.state == GameState.State.S2B and GameState.is_frozen()

@@ -27,25 +27,50 @@ var _s0: RefCounted
 var skip_allowed: bool = true
 var last_error: String = ""
 var _caption_only: bool = false
+var data_valid: bool = false
+var source_data: Variant = null
+var last_resume_accepted: bool = false
 
 func _ready() -> void:
 	load_lines()
 	_set_active(false)
 
 func load_lines() -> bool:
+	if source_data != null:
+		return load_lines_data(source_data)
 	var file: FileAccess = FileAccess.open(LINES_PATH, FileAccess.READ)
 	if file == null:
-		return _reject("无法读取台词文件：%s" % LINES_PATH)
+		return _reject_data("无法读取台词文件：%s" % LINES_PATH)
 	var json := JSON.new()
 	if json.parse(file.get_as_text()) != OK:
-		return _reject("台词 JSON 解析失败：%s" % json.get_error_message())
-	var reason: String = validate_lines(json.data)
+		return _reject_data("台词 JSON 解析失败：%s" % json.get_error_message())
+	return load_lines_data(json.data)
+
+func load_lines_data(data: Variant) -> bool:
+	var reason: String = validate_lines(data)
+	if reason.is_empty():
+		reason = validate_required_ids(data)
 	if not reason.is_empty():
-		return _reject(reason)
-	_lines.clear()
-	for entry: Dictionary in json.data:
-		_lines[str(entry["id"])] = entry.duplicate(true)
+		return _reject_data(reason)
+	var next_lines: Dictionary = {}
+	for entry: Dictionary in data:
+		next_lines[str(entry["id"])] = entry.duplicate(true)
+	_lines = next_lines
+	data_valid = true
+	last_error = ""
+	last_resume_accepted = _s0.retry_pending_stage() if _s0 != null else false
 	return true
+
+static func validate_required_ids(data: Array) -> String:
+	var ids: Dictionary = {}
+	for entry: Dictionary in data:
+		ids[str(entry["id"])] = true
+	var missing: Array[String] = []
+	for number: int in range(101, 195):
+		var id: String = "T%d" % number
+		if not ids.has(id):
+			missing.append(id)
+	return "" if missing.is_empty() else "序章缺少必需台词：" + ", ".join(missing)
 
 static func validate_lines(data: Variant) -> String:
 	if not data is Array or (data as Array).is_empty():
@@ -66,6 +91,12 @@ static func validate_lines(data: Variant) -> String:
 		seen[key] = true
 	return ""
 
+func _reject_data(reason: String) -> bool:
+	data_valid = false
+	_set_active(false)
+	_lines.clear()
+	return _reject(reason)
+
 func _reject(reason: String) -> bool:
 	last_error = reason
 	push_error("[Dialogue] %s" % reason)
@@ -78,16 +109,22 @@ func play(key: String) -> bool:
 	return play_seq([key])
 
 ## 先校验整段再替换当前播放，缺 key 不会吞掉已有内容。
-func play_seq(keys: Array) -> bool:
+func validate_sequence(keys: Array) -> String:
+	if not data_valid:
+		return "台词数据未成功加载"
 	if keys.is_empty():
-		return _reject("台词序列不能为空")
+		return "台词序列不能为空"
 	for key: Variant in keys:
 		if not key is String or not _lines.has(key):
-			return _reject("台词 key 不存在：%s" % str(key))
-	if _caption_only:
-		for key: String in keys:
-			if _lines[key]["mode"] != "caption":
-				return _reject("字幕实例拒绝非caption台词")
+			return "台词 key 不存在：%s" % str(key)
+		if _caption_only and _lines[key]["mode"] != "caption":
+			return "字幕实例拒绝非caption台词"
+	return ""
+
+func play_seq(keys: Array) -> bool:
+	var reason: String = validate_sequence(keys)
+	if not reason.is_empty():
+		return _reject(reason)
 	_keys.assign(keys)
 	_index = 0
 	last_error = ""
@@ -250,6 +287,8 @@ class S0Sequence extends RefCounted:
 		&"READING": ["T112", "T113", "T114"],
 		&"R2": ["T116"], &"R3": ["T117", "T118"], &"R4": ["T121"]}
 	var phase: StringName = &""
+	var last_completed_stage: StringName = &""
+	var pending_stage: StringName = &""
 	var _player: Control
 	var _page: Control
 	var _nav: Control
@@ -290,15 +329,36 @@ class S0Sequence extends RefCounted:
 		_nav.set_process_input(false)
 		_start(&"READING")
 
-	func _start(next: StringName) -> void:
+	func _start(next: StringName) -> bool:
+		var previous_skip: bool = _player.skip_allowed
+		var reason: String = _player.validate_sequence(SEQUENCES[next])
+		_player.skip_allowed = next == &"R2"
+		if not reason.is_empty() or not _player.play_seq(SEQUENCES[next]):
+			pending_stage = next
+			_player.skip_allowed = previous_skip
+			if not reason.is_empty():
+				_player.last_error = reason
+			_restore()
+			return false
 		phase = next
+		pending_stage = &""
 		_player.stage_started.emit(phase, _run_id)
-		_player.skip_allowed = phase == &"R2"
-		_player.play_seq(SEQUENCES[phase])
+		return true
+
+	func retry_pending_stage() -> bool:
+		if _run_id != GameState.run_id or GameState.state != GameState.State.S0 or pending_stage == &"" or _player.is_playing():
+			return false
+		_resume_vital = GameState.is_processing()
+		_resume_nav = _nav.is_processing_input()
+		_running = true
+		GameState.set_process(false)
+		_nav.set_process_input(false)
+		return _start(pending_stage)
 
 	func _on_finished(_skipped: bool) -> void:
-		if _run_id != GameState.run_id:
+		if _run_id != GameState.run_id or not _running or phase == &"" or phase == last_completed_stage:
 			return
+		last_completed_stage = phase
 		_player.stage_finished.emit(phase, _run_id)
 		match phase:
 			&"READING":

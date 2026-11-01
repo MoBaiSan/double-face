@@ -25,6 +25,7 @@ func run(map: Node) -> int:
 	_test_balance_guards()
 	_test_epsilon_boundaries()
 	_test_corner_labels()
+	_test_visual_guards()
 	print("[SP-06] failures=%d" % _failures)
 	GameState.vital_changed.disconnect(_on_test_vital_changed)
 	scope.restore()
@@ -397,3 +398,42 @@ func _marker_layout() -> Dictionary:
 	result.evidence = "points=%d area=%s label=%s min_top_gap=%.2f min_label_gap=%.2f" % [_map.get_point_ids().size(), area, label, top_gap, label_gap]
 	result.evidence += surveyable_geometry
 	return result
+
+
+func _test_visual_guards() -> void:
+	var source: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/map.json"))
+	var zero: Dictionary = source.duplicate(true)
+	zero.visual.blue_pulse_period = 0.0
+	_check(MAP_DATA_SCRIPT.from_dictionary(zero) == null and MAP_DATA_SCRIPT.validate_visual(zero.visual).contains("blue_pulse_period"), "map_visual_period_rejects_zero")
+	var outcomes: Array[bool] = []
+	for key: String in MAP_DATA_SCRIPT.VISUAL_NUMBERS:
+		for value: Variant in ["bad", false, null, NAN, INF, -INF, -1.0]:
+			var sample: Dictionary = source.visual.duplicate(true)
+			sample[key] = value
+			outcomes.append(not MAP_DATA_SCRIPT.validate_visual(sample).is_empty())
+		var sample: Dictionary = source.visual.duplicate(true)
+		sample[key] = 1.1 if key in ["blue_pulse_amplitude", "hover_brightness"] else 0.0
+		outcomes.append(not MAP_DATA_SCRIPT.validate_visual(sample).is_empty())
+	_check(outcomes.size() == 48 and outcomes.all(func(ok: bool): return ok), "map_visual_rejects_invalid_numeric")
+	_prepare_map_state()
+	var healthy: bool = _map.load_map_for_test(source) and _map.is_playable_for_test()
+	var rejected: bool = not _map.load_map_for_test(zero)
+	var stopped: bool = rejected and not _map.is_playable_for_test() and _map.get_current_node_id() == &"" and not _map.try_move_to(&"c1") and not _map.is_processing() and not _map.is_processing_unhandled_input()
+	_map._process(1.0)
+	_check(healthy and stopped and is_finite(_map._pulse_time) and _map._pulse_time == 0.0, "map_visual_failure_disables_play")
+	var valid: Array[bool] = []
+	for mode: int in range(4):
+		var sample: Dictionary = source.duplicate(true)
+		if mode == 0:
+			sample.erase("visual")
+		elif mode == 1:
+			sample.visual.erase("blue_pulse_period")
+		else:
+			sample.visual.blue_pulse_period = 0.5
+			sample.visual.blue_pulse_amplitude = float(mode - 2)
+			sample.visual.hover_brightness = float(mode - 2)
+		valid.append(_map.load_map_for_test(sample))
+		_map._process(0.05)
+		valid.append(is_finite(_map._pulse_time))
+	valid.append(_map.load_map_for_test(source))
+	_check(valid.size() == 9 and valid.all(func(ok: bool): return ok), "map_visual_valid_and_defaults")

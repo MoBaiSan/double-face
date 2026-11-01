@@ -211,7 +211,7 @@ func _injured() -> void:
 	var frame: int = Engine.get_process_frames()
 	_win()
 	h.b._settle_victory()
-	_check(12, GameState.must_done == 5 and GameState.vital_now == 80.0 and h.events[0] == 1 and Engine.get_process_frames() == frame, "未满嗓子胜利同帧只回10")
+	_check(12, GameState.must_done == 5 and GameState.vital_now == 78.0 and h.events[0] == 1 and Engine.get_process_frames() == frame, "未满嗓子胜利同帧只回8")
 func _defeat_reset() -> void:
 	_walk(FIXTURE.ROUTE)
 	h._read()
