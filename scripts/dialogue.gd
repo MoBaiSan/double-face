@@ -11,6 +11,7 @@ const MODES: Array[String] = ["read", "auto", "caption"]
 const AUTO_SECONDS: float = 3.0
 const CAPTION_SECONDS: float = 3.0
 const FADE_SECONDS: float = 0.25
+var caption_hold_seconds: float = CAPTION_SECONDS
 @export var characters_per_second: float = 30.0
 @onready var _panel: PanelContainer = %Panel
 @onready var _speaker: Label = %Speaker
@@ -180,8 +181,8 @@ func advance_time(delta: float) -> void:
 			if _elapsed >= AUTO_SECONDS:
 				_next_line()
 		"caption":
-			_panel.modulate.a = 1.0 - clampf((_elapsed - CAPTION_SECONDS) / FADE_SECONDS, 0.0, 1.0)
-			if _elapsed >= CAPTION_SECONDS + FADE_SECONDS:
+			_panel.modulate.a = 1.0 - clampf((_elapsed - caption_hold_seconds) / FADE_SECONDS, 0.0, 1.0)
+			if _elapsed >= caption_hold_seconds + FADE_SECONDS:
 				_next_line()
 		"read":
 			pass
@@ -207,7 +208,11 @@ func _input(event: InputEvent) -> void:
 
 
 ## 专用字幕实例只改自己的覆盖样式，不影响剧情/调查播放器。
-func configure_caption_view(rect: Rect2) -> void:
+func configure_caption_view(rect: Rect2, hold_seconds: float = CAPTION_SECONDS) -> void:
+	if not is_finite(hold_seconds) or hold_seconds <= 0.0:
+		_reject("caption hold must be positive")
+		return
+	caption_hold_seconds = hold_seconds
 	_caption_only = true
 	skip_allowed = false
 	_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())

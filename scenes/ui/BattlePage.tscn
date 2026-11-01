@@ -288,3 +288,43 @@ offset_bottom = 36.0
 theme_override_font_sizes/font_size = 20
 disabled = true
 text = "返回"
+
+[node name="EatenMomentTemplate" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+z_index = 40
+
+[node name="PaperDim" type="ColorRect" parent="EatenMomentTemplate"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.12)
+
+[node name="LeftSmear" type="Node2D" parent="EatenMomentTemplate"]
+visible = false
+
+[node name="SoftEdge" type="Polygon2D" parent="EatenMomentTemplate/LeftSmear"]
+polygon = PackedVector2Array(0, 100, 14, 118, 38, 173, 44, 246, 28, 310, 0, 340)
+color = Color(0.20, 0.18, 0.15, 0.04)
+
+[node name="NearEdge" type="Polygon2D" parent="EatenMomentTemplate/LeftSmear"]
+polygon = PackedVector2Array(0, 115, 11, 132, 29, 178, 34, 242, 20, 300, 0, 325)
+color = Color(0.20, 0.18, 0.15, 0.08)
+
+[node name="Ink" type="Polygon2D" parent="EatenMomentTemplate/LeftSmear"]
+polygon = PackedVector2Array(0, 137, 8, 152, 18, 192, 22, 235, 12, 281, 0, 306)
+color = Color(0.20, 0.18, 0.15, 0.14)
+
+[node name="EatenCaption" type="Control" parent="EatenMomentTemplate"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2

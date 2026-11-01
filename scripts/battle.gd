@@ -17,6 +17,8 @@ const COMPONENT_TESTS: Array[String] = [
 	"--sp09-self-test", "--sp11-self-test", "--sp07-self-test",
 	"--sp06-self-test", "--sp03-self-test", "--sp04-self-test"]
 const EPSILON: float = 1e-6
+## 只对本击的完整乘积生效，末尾仍只取整一次。
+const EATEN_MULTIPLIER: float = 0.5
 
 @onready var _player: Node2D = $ViewArea/PlayerAnchor
 @onready var _enemy: Node2D = $ViewArea/EnemyAnchor
@@ -219,13 +221,31 @@ func _enemy_action() -> void:
 	turn_phase = State.ENEMY_ACTION
 	elapsed = 0.0
 	var product: float = _k("enemy_attack") * _roll() * _received_multiplier
+	var eaten: float = _eaten_multiplier(product)
 	incoming_damage.emit(product, player_hp, int(_k("player_hp_max")))
-	player_hp = maxi(0, player_hp - roundi(product))
+	player_hp = maxi(0, player_hp - roundi(product * eaten))
+	if eaten == EATEN_MULTIPLIER:
+		_main.get_node("Overlay/InsideCaptions").eaten_receipt.damage_frame = Engine.get_process_frames()
 	if player_hp == 0:
 		_defeat()
 	else:
 		_start_feedback(0, true)
 	_refresh_display()
+
+func _eaten_multiplier(product: float) -> float:
+	if _run_id != GameState.run_id or GameState.state != GameState.State.S2B or not _started or _settled:
+		return 1.0
+	var half: float = _k("player_hp_max") * 0.5
+	if GameState.eaten_used or player_hp < half or not is_finite(product) or product <= 0.0:
+		return 1.0
+	if player_hp - roundi(product) >= half or enemy_hp <= 0 or GameState.vital_now <= 0.0:
+		return 1.0
+	var captions: Node = _main.get_node("Overlay/InsideCaptions")
+	if not captions.can_present_eaten(self, _run_id) or not GameState.record_event(&"E16", true, _run_id):
+		return 1.0
+	GameState.eaten_used = true
+	captions.present_eaten(self, _run_id)
+	return EATEN_MULTIPLIER
 
 func _settle_victory() -> void:
 	if _settled or not _started or enemy_hp != 0 or player_hp <= 0:

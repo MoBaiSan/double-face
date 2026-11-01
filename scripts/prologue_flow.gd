@@ -83,7 +83,6 @@ func _bind_battle() -> void:
 	GameState.battle_actor = weakref(actor)
 	if not actor.battle_lost.is_connected(_on_battle_lost):
 		actor.battle_lost.connect(_on_battle_lost)
-		actor.incoming_damage.connect(_on_incoming_damage)
 
 func _start_requested_test() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
@@ -269,10 +268,6 @@ func _on_exit() -> void:
 
 func _on_battle_lost() -> void:
 	GameState.request_transition(&"failure")
-
-func _on_incoming_damage(product: float, hp: int, maximum: int) -> void:
-	if hp - roundi(product) <= maximum / 2.0:
-		GameState.record_event(&"E16", true)
 
 func return_from_battle() -> bool:
 	if not GameState.record_event(&"E17", true):

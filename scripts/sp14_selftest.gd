@@ -167,7 +167,7 @@ func _combat() -> void:
 	_turn(0)
 	_turn(2)
 	ck(24, early and c.event_count(&"E16") == 1 and seen[0] == 65, "E16预测半血前一次通知")
-	ck(25, samples[0] == 5 and c.battle.player_hp == 35 and c.battle.enemy_hp == 60, "E16不改伤害或随机次数")
+	ck(25, samples[0] == 5 and c.battle.player_hp == 45 and c.battle.enemy_hp == 60, "E16 只减本击且随机次数不变")
 
 func _turn(command: int) -> void:
 	c.battle.submit_command(command)
