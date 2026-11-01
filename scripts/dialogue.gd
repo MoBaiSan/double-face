@@ -25,6 +25,7 @@ var _elapsed: float = 0.0
 var _s0: RefCounted
 var skip_allowed: bool = true
 var last_error: String = ""
+var _caption_only: bool = false
 
 func _ready() -> void:
 	load_lines()
@@ -82,6 +83,10 @@ func play_seq(keys: Array) -> bool:
 	for key: Variant in keys:
 		if not key is String or not _lines.has(key):
 			return _reject("台词 key 不存在：%s" % str(key))
+	if _caption_only:
+		for key: String in keys:
+			if _lines[key]["mode"] != "caption":
+				return _reject("字幕实例拒绝非caption台词")
 	_keys.assign(keys)
 	_index = 0
 	last_error = ""
@@ -199,6 +204,29 @@ func _input(event: InputEvent) -> void:
 		if click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
 			advance()
 	get_viewport().set_input_as_handled()
+
+
+## 专用字幕实例只改自己的覆盖样式，不影响剧情/调查播放器。
+func configure_caption_view(rect: Rect2) -> void:
+	_caption_only = true
+	skip_allowed = false
+	_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_speaker.hide()
+	var margin: MarginContainer = _panel.get_node("Margin")
+	for edge: String in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + edge, 0)
+	_body.custom_minimum_size = Vector2.ZERO
+	_body.scroll_active = false
+	_body.autowrap_mode = TextServer.AUTOWRAP_OFF
+	for node: Control in find_children("*", "Control", true, false):
+		node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		node.focus_mode = Control.FOCUS_NONE
+	set_caption_rect(rect)
+
+func set_caption_rect(rect: Rect2) -> void:
+	_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_panel.position = rect.position
+	_panel.size = rect.size
 
 func bind_s0(page: Control, switch_page: Callable) -> void:
 	if _s0 == null:

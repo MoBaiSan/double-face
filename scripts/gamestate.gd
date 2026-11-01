@@ -253,6 +253,7 @@ var _events: Dictionary = {}
 var _investigations: Dictionary = {}
 var tutorial_seen: Dictionary = {"investigation": false, "vital": false, "battle": false}
 var tutorial_loaded: bool = false
+var inside_caption_state: Dictionary = {}
 
 
 ## 教学旗独立于任务进度，重来不清；显式域快照仍精确恢复。
@@ -282,6 +283,9 @@ func begin_session(initial: State = State.S0, saved: Dictionary = {}) -> void:
 	_investigations.clear()
 	reset_progress()
 	_vital_now = vital_max
+	inside_caption_state = {"session": run_id, "requested": {}, "played": {}, "closed": false,
+		"t141_after_step": -1, "previous_done": 0, "last_vital": vital_max,
+		"last_band": get_band_for_value(vital_max)}
 	_drain_accum = 0.0
 	set_frozen(initial in [State.S2B, State.S4, State.S5])
 
@@ -290,7 +294,7 @@ func capture_session() -> Dictionary:
 	for key: String in ["_state", "run_id", "_events", "_investigations",
 		"_required_ids", "_completed_ids", "_progress_valid", "_p5_read", "_p5_won",
 		"_exit_consumed", "_vital_now", "_frozen", "_drain_accum", "presenter", "battle_actor", "eaten_used",
-		"tutorial_seen", "tutorial_loaded"]:
+		"tutorial_seen", "tutorial_loaded", "inside_caption_state"]:
 		var value: Variant = get(key)
 		saved[key] = value.duplicate(true) if value is Dictionary else value
 	return saved
