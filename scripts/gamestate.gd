@@ -251,6 +251,24 @@ var presenter: Callable
 var battle_actor: WeakRef
 var _events: Dictionary = {}
 var _investigations: Dictionary = {}
+var tutorial_seen: Dictionary = {"investigation": false, "vital": false, "battle": false}
+var tutorial_loaded: bool = false
+
+
+## 教学旗独立于任务进度，重来不清；显式域快照仍精确恢复。
+func claim_tutorial(key: String, session: int) -> bool:
+	if session != run_id or not tutorial_seen.has(key) or tutorial_seen[key]:
+		return false
+	tutorial_seen[key] = true
+	return true
+
+func import_tutorial(data: Variant) -> void:
+	var source: Dictionary = data if data is Dictionary else {}
+	for key: String in tutorial_seen:
+		var value: Variant = source.get(key, false)
+		if value is bool and value:
+			tutorial_seen[key] = true
+	tutorial_loaded = true
 
 func begin_session(initial: State = State.S0, saved: Dictionary = {}) -> void:
 	if not saved.is_empty():
@@ -271,7 +289,8 @@ func capture_session() -> Dictionary:
 	var saved: Dictionary = {}
 	for key: String in ["_state", "run_id", "_events", "_investigations",
 		"_required_ids", "_completed_ids", "_progress_valid", "_p5_read", "_p5_won",
-		"_exit_consumed", "_vital_now", "_frozen", "_drain_accum", "presenter", "battle_actor", "eaten_used"]:
+		"_exit_consumed", "_vital_now", "_frozen", "_drain_accum", "presenter", "battle_actor", "eaten_used",
+		"tutorial_seen", "tutorial_loaded"]:
 		var value: Variant = get(key)
 		saved[key] = value.duplicate(true) if value is Dictionary else value
 	return saved

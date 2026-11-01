@@ -386,6 +386,9 @@ func _setup_dialogue() -> void:
 	_flow = preload("res://scripts/prologue_flow.gd").new()
 	add_child(_flow)
 	_flow.configure(self)
+	var tutorial := preload("res://scripts/tutorial_state.gd").new()
+	$Overlay.add_child(tutorial)
+	tutorial.configure(self)
 
 func _run_sp11_self_test() -> void:
 	var failures: int = await preload("res://scripts/sp11_selftest.gd").new().run(self, _dialogue)

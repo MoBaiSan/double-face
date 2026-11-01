@@ -19,6 +19,8 @@ func write_once(run_id: int, checkpoint_id: StringName, payload: Dictionary) -> 
 		return true
 	attempts += 1
 	var document: Dictionary = {"version": 1, "checkpoint": checkpoint_id, "progress": payload}
+	var state: Node = (Engine.get_main_loop() as SceneTree).root.get_node("GameState")
+	document["tutorial"] = state.tutorial_seen.duplicate(true)
 	if not _write_atomic(JSON.stringify(document)):
 		write_probe.run_once()
 		return false
