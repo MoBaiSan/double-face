@@ -3,11 +3,13 @@ extends Control
 signal session_entered(session: int)
 signal exit_line_finished(session: int, completed: bool)
 const Interaction = preload("res://scripts/interactable.gd")
-const SEQUENCES: Dictionary = {&"sofa": ["T176", "T177"], &"detail": ["T190"], &"exit": ["T193"]}
-const ALLOWED_IDS: Array[String] = ["T176", "T177", "T190", "T193"]
+const SEQUENCES: Dictionary = {&"sofa": ["T176", "T177"], &"detail": ["T190"], &"exit": ["T193"],
+	&"trust": ["T178", "T179", "T180", "T181", "T182", "T183", "T184", "T185", "T186", "T187", "T188", "T189"]}
+const TRUST_IDS: Array[String] = ["T178", "T179", "T180", "T181", "T182", "T183", "T184", "T185", "T186", "T187", "T188", "T189"]
+const ALLOWED_IDS: Array[String] = ["T176", "T177", "T190", "T193", "T178", "T179", "T180", "T181", "T182", "T183", "T184", "T185", "T186", "T187", "T188", "T189"]
 const TARGET_RECTS: Dictionary = {
-	"Sofa": Rect2(0.12, 0.66, 0.15, 0.18), "Scar": Rect2(0.38, 0.33, 0.10, 0.17),
-	"Door": Rect2(0.84, 0.20, 0.10, 0.55)}
+	"Sofa": Rect2(0.12, 0.62, 0.15, 0.14), "Scar": Rect2(0.38, 0.33, 0.10, 0.17),
+	"Ban": Rect2(0.24, 0.12, 0.13, 0.20), "Door": Rect2(0.78, 0.20, 0.08, 0.55)}
 var flow: Node
 var player: Control
 var exit_service: Node
@@ -19,6 +21,7 @@ var _seen: Array[String] = []
 var _expected: Array = []
 var _focus_target: String = "Sofa"
 @onready var visual: Control = $Illustration/DressingVisual
+@onready var medical: Control = $MedicalIllustration
 
 func configure(director: Node, service: Node) -> void:
 	if flow != null:
@@ -40,6 +43,7 @@ func configure(director: Node, service: Node) -> void:
 		button.focus_exited.connect(_focus_changed.bind(id, false))
 		if id == "Scar":
 			item.repeated.connect(func(): request_room_sequence(&"detail", ["T190"]))
+	medical.closed.connect(_on_medical_closed)
 	player.line_started.connect(_on_line)
 	player.sequence_finished.connect(_on_sequence_finished)
 	exit_service.status_changed.connect(_refresh_status)
@@ -59,7 +63,7 @@ func enter_session() -> void:
 		interaction(id).set_read(false)
 	$Status/ProgressNotice.text = ""
 	visual.show()
-	visual.reset_dressing()
+	medical.dismiss()
 	$Objects.show()
 	session_entered.emit(captured_run)
 	_refresh_status()
@@ -93,6 +97,8 @@ func request_object(id: String) -> bool:
 				item.activate()
 				return busy
 			return request_room_sequence(&"detail", ["T190"])
+		"Ban":
+			return request_room_sequence(&"trust", TRUST_IDS)
 		"Door":
 			if not GameState.event_done(&"E12"):
 				$Status/ProgressNotice.text = Interaction.text_for("progress_pending")
@@ -118,11 +124,14 @@ func request_room_sequence(kind: StringName, ids: Array) -> bool:
 	_seen.clear()
 	busy = true
 	player.skip_allowed = false
-	if kind == &"sofa":
-		visual.show_dressing()
 	if not player.play_seq(ids):
 		_clear_reading()
 		return false
+	if kind == &"sofa":
+		player.hide()
+		medical.open()
+	elif kind == &"trust" and not GameState.event_started(&"E13"):
+		GameState.record_event(&"E13", false, captured_run)
 	$Status/ProgressNotice.text = ""
 	return true
 
@@ -137,13 +146,20 @@ func _on_sequence_finished(skipped: bool) -> void:
 	complete = complete and not player.is_playing() and _seen == _expected and player._keys == _expected
 	var exit_read: bool = _kind == &"exit"
 	var session: int = _sequence_run
-	if complete and not exit_read:
+	if complete and _kind == &"trust":
+		complete = GameState.state == GameState.State.S6
+		if complete:
+			if not GameState.event_done(&"E13"):
+				flow.finish_safehouse(&"E13", captured_run)
+			flow.main.show_page(&"ScenePage")
+	elif complete and not exit_read:
 		interaction("Sofa" if _kind == &"sofa" else "Scar").complete_reading()
 	_clear_reading()
 	if exit_read:
 		exit_line_finished.emit(session, complete)
 
 func _clear_reading() -> void:
+	medical.dismiss()
 	busy = false
 	_kind = &""
 	_expected.clear()
@@ -152,6 +168,11 @@ func _clear_reading() -> void:
 
 ## 阅读中的热区点击不替换序列，也不充当正文继续。
 func blocks_object_input(event: InputEvent) -> bool:
+	if medical.is_visible_in_tree():
+		if event is InputEventMouse and flow.main._page_switch_bar.get_global_rect().has_point(event.position):
+			return false
+		if medical.route_input(event):
+			return true
 	if not busy or not is_visible_in_tree() or not event is InputEventMouseButton:
 		return false
 	for id: String in TARGET_RECTS:
@@ -165,7 +186,13 @@ func _focus_changed(id: String, active: bool) -> void:
 	if active:
 		_focus_target = id
 
+func _on_medical_closed() -> void:
+	if busy and _kind == &"sofa" and player.is_playing():
+		player.show()
+
 func _restore_focus() -> void:
+	if not is_visible_in_tree():
+		medical.dismiss()
 	if _can_request():
 		$Objects.get_node(_focus_target).grab_focus()
 

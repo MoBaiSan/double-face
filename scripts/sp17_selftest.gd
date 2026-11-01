@@ -35,15 +35,15 @@ func _layout() -> void:
 	h.key(KEY_RIGHT)
 	ck(2, absent and h.c.map.get_step_count() == step, "safe_room_has_no_map_or_movable_actor")
 	var targets: Array = h.descendants(h.room).filter(func(node: Node): return node is Control and node.focus_mode != Control.FOCUS_NONE)
-	ck(3, targets.size() == 3 and targets.map(func(node: Node): return String(node.name)) == ["Sofa", "Scar", "Door"] and h.room.interaction("Sofa").progression and not h.room.interaction("Scar").progression and not h.room.interaction("Door").progression, "exactly_three_room_targets")
+	ck(3, targets.size() == 4 and targets.map(func(node: Node): return String(node.name)) == ["Sofa", "Scar", "Ban", "Door"] and h.room.interaction("Sofa").progression and not h.room.interaction("Scar").progression and not h.room.interaction("Door").progression and not h.room.interaction("Ban").progression, "exactly_four_room_targets_with_optional_trust")
 	ck(5, h.targets_clear(), "hit_rects_clear_and_visible")
 	await h.fresh(host)
 	var silent: bool = h.page_inputs()
 	ck(8, silent and h.lines.is_empty() and not h.player.is_playing() and not GameState.event_done(&"E12"), "entrance_stays_silent_per_run")
 	h.click("Sofa")
-	ck(6, h.player.get_current_key() == "T176" and h.room.visual.get_node("VisualRoot/Hand").is_visible_in_tree(), "sofa_real_mouse_starts_dressing")
+	ck(6, h.player.get_current_key() == "T176" and h.room.medical.picture.get_node("VisualRoot/Hand").is_visible_in_tree(), "sofa_real_mouse_starts_dressing")
 	await host.get_tree().process_frame
-	ck(4, h.art_contract(), "chosen_illustration_contract")
+	ck(4, _medical_art_contract(), "centered_medical_illustration_contract")
 
 func _keyboard() -> void:
 	await h.fresh(host)
@@ -54,7 +54,9 @@ func _keyboard() -> void:
 	ck(34, host.get_viewport().gui_get_focus_owner() == h.button("Scar") and h.c.map.get_current_node_id() == position and h.c.map.get_step_count() == step, "arrow_keys_only_focus_objects")
 	h.key(KEY_LEFT)
 	h.key(KEY_ENTER)
-	var reading: bool = h.player.get_current_key() == "T176"
+	var reading: bool = h.player.get_current_key() == "T176" and h.room.medical.visible
+	h.key(KEY_ENTER)
+	reading = reading and not h.room.medical.visible and h.player.get_current_key() == "T176"
 	for i: int in range(4):
 		h.key(KEY_ENTER)
 	var before: bool = not GameState.event_done(&"E12") and h.room.interaction("Sofa").read
@@ -65,6 +67,7 @@ func _keyboard() -> void:
 func _dialogue() -> void:
 	await h.fresh(host)
 	h.click("Sofa")
+	h.c.click(h.room.medical.frame)
 	h.player.finish_text()
 	var data: Dictionary = h.player.get_lines()
 	ck(10, h.player._speaker.text == "琥珀" and h.player.get_visible_text() == H.T176 and data.T176.text == H.T176 and h.player._body.visible_characters == -1, "t176_literal_visible")
@@ -81,6 +84,7 @@ func _dialogue() -> void:
 func _cancel() -> void:
 	await h.fresh(host)
 	h.click("Sofa")
+	h.c.click(h.room.medical.frame)
 	h.key(KEY_ESCAPE)
 	ck(12, h.player.get_current_key() == "T176" and not h.player.is_typing() and h.player.get_visible_text() == H.T176 and h.ids() == ["T176"] and not GameState.event_done(&"E12"), "dressing_cancel_only_finishes_line")
 	h.player._finish(true)
@@ -320,3 +324,25 @@ func _cleanup() -> void:
 		ok = ok and h.ids() == ["T190"] and h.room.interaction("Scar").read
 	await h.close()
 	ck(40, ok and h.clean, "context_cleanup_no_stale_connections")
+## 新版上药画幅缩小，保留双人、肩手绷带交叠与有效颜色/可见面积检查。
+func _medical_art_contract() -> bool:
+	var art: Control = h.room.medical.picture
+	var frame: Rect2 = art.get_global_rect()
+	var w: float = frame.size.x
+	var height: float = frame.size.y
+	if not h.room.medical.is_visible_in_tree() or w < 320.0 or height < 160.0 or absf(w / height - 2.0) > 0.01:
+		return false
+	if not frame.get_center().is_equal_approx(h.room.get_global_rect().get_center()):
+		return false
+	var root: Node = art.get_node("VisualRoot")
+	if not root.get_node("Background") is ColorRect:
+		return false
+	var shapes: Dictionary = {}
+	for id: String in ["BanHead", "BanTorso", "KohakuHead", "KohakuTorso", "ShoulderPatch", "UpperArm", "Forearm", "Hand", "Bandage"]:
+		var node: Node = root.get_node_or_null(id)
+		if not node is Polygon2D or node.polygon.size() < (6 if id.ends_with("Head") else 4):
+			return false
+		if not h._fully_shown(node, frame):
+			return false
+		shapes[id] = h._polygon(node)
+	return h._figures(shapes, w, height) and h._contacts(shapes, w * height) and h._art_visibility(root, shapes, w * height)

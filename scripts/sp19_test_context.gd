@@ -138,7 +138,7 @@ func permitted_ui() -> bool:
 	return true
 
 func no_extra_nodes() -> bool:
-	if room.get_node("Objects").get_child_count() != 3 or room.find_children("*", "Button", true, false).size() != 3:
+	if room.get_node("Objects").get_child_count() != 4 or room.find_children("*", "Button", true, false).size() != 4:
 		return false
 	for item: Node in [art] + descendants(art):
 		if item is Button or item is CharacterBody2D or item is TileMapLayer:
