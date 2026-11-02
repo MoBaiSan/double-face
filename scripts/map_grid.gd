@@ -1,5 +1,5 @@
 ## 里侧点阵的显示与移动；调查使用书页共用的交互组件。
-extends Control
+extends "res://scripts/dot_grid_surface.gd"
 var _visited: Dictionary = {}
 var _arrival_text: String = ""
 signal moved(from_id: StringName, to_id: StringName, step_count: int)
@@ -26,7 +26,6 @@ var _step_count: int = 0
 var _grid_size: Vector2 = Vector2.ONE
 var _visual: Dictionary = {}
 var _pulse_time: float = 0.0
-var _last_gui_input_consumed: bool = false
 var _start_fallback_warning: bool = false
 var _interactions: RefCounted
 func _ready() -> void:
@@ -136,20 +135,18 @@ func _gui_input(event: InputEvent) -> void:
 		queue_redraw()
 		return
 	var button: InputEventMouseButton = event as InputEventMouseButton
-	if button == null or not button.pressed or button.button_index != MOUSE_BUTTON_LEFT:
+	if not is_left_press(event):
 		return
 	_last_gui_input_consumed = false
 	if _interactions.click_current(button.position):
-		_last_gui_input_consumed = true
-		accept_event()
+		consume_grid_input()
 		return
 	var clicked_id: StringName = _hover_candidate_at(button.position)
 	if clicked_id == &"":
 		return
 	_hovered_id = clicked_id
 	try_move_to(clicked_id)
-	_last_gui_input_consumed = true
-	accept_event()
+	consume_grid_input()
 func _on_mouse_exited() -> void:
 	_hovered_id = &""
 	_interactions.hover_at(Vector2(-100.0, -100.0))
@@ -248,8 +245,7 @@ func _hover_candidate_at(position: Vector2) -> StringName:
 func _point_position(point_id: StringName) -> Vector2:
 	var point: Dictionary = _points.get(point_id, {}) as Dictionary
 	var grid: Array = point.get("grid", [0, 0]) as Array
-	var pitch: float = min(size.x / _grid_size.x, size.y / _grid_size.y)
-	return Vector2(size.x * 0.5 + (float(grid[0]) - (_grid_size.x - 1.0) * 0.5) * pitch, size.y * 0.5 + (float(grid[1]) - (_grid_size.y - 1.0) * 0.5) * pitch)
+	return cell_center(Vector2(float(grid[0]), float(grid[1])), _grid_size)
 func _float_visual(name: String) -> float: return float(_visual.get(name, 1.0))
 func _display_name(point_id: StringName) -> String:
 	var point: Dictionary = _points.get(point_id, {}) as Dictionary
@@ -395,3 +391,5 @@ func _refresh_progress_ui(_a: Variant = null, _b: Variant = null, _c: Variant = 
 	page.get_node("ReturnHint").visible = GameState.exit_open and GameState.vital_now > 0.0
 	page.get_node("ReturnHint").text = _arrival_text if at_entry and not GameState.is_frozen() else "该回去了"
 	page.get_node("ExitConfirm").visible = GameState.can_confirm_exit(at_entry, is_visible_in_tree())
+
+func get_grid_size() -> Vector2: return _grid_size

@@ -66,7 +66,7 @@ static func validate_required_ids(data: Array) -> String:
 	for entry: Dictionary in data:
 		ids[str(entry["id"])] = true
 	var missing: Array[String] = []
-	for number: int in range(101, 195):
+	for number: int in range(101, 196):
 		var id: String = "T%d" % number
 		if not ids.has(id):
 			missing.append(id)
@@ -270,9 +270,18 @@ func set_caption_rect(rect: Rect2) -> void:
 	_panel.position = rect.position
 	_panel.size = rect.size
 
-func bind_s0(page: Control, switch_page: Callable) -> void:
-	if _s0 == null:
-		_s0 = S0Sequence.new(self, page, switch_page)
+func bind_s0(room: Control, switch_page: Callable) -> void:
+	if _s0 != null:
+		_s0.dispose()
+	var page: Control = room.flow.main.get_node("Pages/ScenePage")
+	var nav: Control = page.get_node("PageNav")
+	for row: Array in [[nav.reading_requested, Callable(page, "_begin_reading")], [nav.confirmed, Callable(page, "_on_confirmed")]]:
+		if row[0].is_connected(row[1]):
+			row[0].disconnect(row[1])
+	_s0 = S0Sequence.new(self, room, switch_page)
+
+func start_s0_from_speaker(session: int) -> bool:
+	return _s0 != null and _s0.start_from_speaker(session)
 
 func get_story_phase() -> StringName:
 	return _s0.phase if _s0 != null else &""
@@ -291,45 +300,41 @@ class S0Sequence extends RefCounted:
 	var pending_stage: StringName = &""
 	var _player: Control
 	var _page: Control
-	var _nav: Control
 	var _item: Control
 	var _switch_page: Callable
-	var _placeholder: Callable
 	var _resume_vital: bool = false
-	var _resume_nav: bool = false
+	var _resume_focus: bool = false
+	var _disposed: bool = false
 	var _running: bool = false
 	var _run_id: int = GameState.run_id
+	var _seen: Array[String] = []
 
-	func _init(player: Control, page: Control, switch_page: Callable) -> void:
+	func _init(player: Control, room: Control, switch_page: Callable) -> void:
 		_player = player
-		_page = page
-		_nav = page.get_node("PageNav")
+		_page = room
+		_item = room.interaction("Speaker")
 		_switch_page = switch_page
-		_placeholder = Callable(page, "_begin_reading")
-		if _nav.reading_requested.is_connected(_placeholder):
-			_nav.reading_requested.disconnect(_placeholder)
-		if not _nav.reading_requested.is_connected(_on_read_requested):
-			_nav.reading_requested.connect(_on_read_requested)
-		if not _player.sequence_finished.is_connected(_on_finished):
-			_player.sequence_finished.connect(_on_finished)
+		_player.sequence_finished.connect(_on_finished)
+		_player.line_started.connect(_on_line)
 
-	func _on_read_requested(node: Control) -> void:
-		if GameState.state != GameState.State.S0 or _player.is_playing():
-			return
-		if str(node.get_meta("interaction_id", "")) != "s0_old_speaker":
-			_placeholder.call(node)
-			return
-		if phase != &"":
-			return
-		_item = _nav.get_interactable(node)
+	func binding_valid(session: int) -> bool:
+		return not _disposed and session == _run_id and session == GameState.run_id and is_instance_valid(_page) and _page.is_inside_tree() and is_instance_valid(_item) and _page.has_node("Objects/Speaker/Interaction") and _page.captured_run == session and _page._owns_session() and _page.player == _player and _item == _page.interaction("Speaker")
+
+	func start_from_speaker(session: int) -> bool:
+		if not binding_valid(session) or GameState.state != GameState.State.S0 or not GameState.event_done(&"E1") or GameState.event_done(&"E4") or _player.is_playing() or _running or phase != &"" or pending_stage != &"":
+			return false
 		_resume_vital = GameState.is_processing()
-		_resume_nav = _nav.is_processing_input()
+		_resume_focus = _page._reading_focus
 		_running = true
 		GameState.set_process(false)
-		_nav.set_process_input(false)
-		_start(&"READING")
+		return _start(&"READING")
+
+	func _on_line(id: String) -> void:
+		if _running:
+			_seen.append(id)
 
 	func _start(next: StringName) -> bool:
+		_seen.clear()
 		var previous_skip: bool = _player.skip_allowed
 		var reason: String = _player.validate_sequence(SEQUENCES[next])
 		_player.skip_allowed = next == &"R2"
@@ -346,17 +351,22 @@ class S0Sequence extends RefCounted:
 		return true
 
 	func retry_pending_stage() -> bool:
-		if _run_id != GameState.run_id or GameState.state != GameState.State.S0 or pending_stage == &"" or _player.is_playing():
+		if not binding_valid(_run_id) or GameState.state != GameState.State.S0 or pending_stage == &"" or _player.is_playing():
 			return false
 		_resume_vital = GameState.is_processing()
-		_resume_nav = _nav.is_processing_input()
+		_resume_focus = _page._reading_focus
 		_running = true
 		GameState.set_process(false)
-		_nav.set_process_input(false)
 		return _start(pending_stage)
 
-	func _on_finished(_skipped: bool) -> void:
+	func _on_finished(skipped: bool) -> void:
 		if _run_id != GameState.run_id or not _running or phase == &"" or phase == last_completed_stage:
+			return
+		if skipped and phase != &"R2":
+			_restore()
+			pending_stage = phase
+			return
+		if not skipped and (_player.is_playing() or _seen != SEQUENCES[phase] or _player._keys != SEQUENCES[phase]):
 			return
 		last_completed_stage = phase
 		_player.stage_finished.emit(phase, _run_id)
@@ -378,16 +388,18 @@ class S0Sequence extends RefCounted:
 		if not _running:
 			return
 		_running = false
-		GameState.set_process(_resume_vital)
-		if is_instance_valid(_nav):
-			_nav.set_process_input(_resume_nav)
+		if _run_id == GameState.run_id:
+			GameState.set_process(_resume_vital)
+			if is_instance_valid(_page):
+				_page._reading_focus = _resume_focus
 
 	func dispose() -> void:
+		_disposed = true
 		_restore()
-		if is_instance_valid(_nav):
-			if _nav.reading_requested.is_connected(_on_read_requested):
-				_nav.reading_requested.disconnect(_on_read_requested)
-			if is_instance_valid(_page) and not _nav.reading_requested.is_connected(_placeholder):
-				_nav.reading_requested.connect(_placeholder)
-		if is_instance_valid(_player) and _player.sequence_finished.is_connected(_on_finished):
-			_player.sequence_finished.disconnect(_on_finished)
+		if is_instance_valid(_player):
+			if _player.sequence_finished.is_connected(_on_finished):
+				_player.sequence_finished.disconnect(_on_finished)
+			if _player.line_started.is_connected(_on_line):
+				_player.line_started.disconnect(_on_line)
+
+

@@ -71,15 +71,16 @@ func _opening() -> void:
 	var started: Array = []
 	c.watch(c.main._dialogue.line_started, func(id: String): started.append(id))
 	c.flow.configure(c.main)
-	ck(4, started.is_empty() and c.main._dialogue.get_current_key() == "T101", "重复装配不重播E1")
-	c.finish_sequence(c.main._dialogue)
-	var page: Control = c.main.get_node("Pages/ScenePage")
-	c.click(page.get_node("TestOptions/OptionOne"))
-	page._finish_reading()
-	ck(5, not GameState.event_started(&"E2") and GameState.state == S.S0, "可选阅读不推进旧曲")
-	c.click(page.get_node("TestOptions/OptionTwo"))
+	ck(4, started.is_empty() and not c.main._dialogue.is_playing() and not GameState.event_started(&"E1"), "重复装配不重播E1")
+	c.click_cell(Vector2i(0, 0))
+	c.room_action("Sofa")
+	ck(5, started.is_empty() and not GameState.event_started(&"E2") and GameState.state == S.S0, "普通格及出发前沙发不推进")
+	c.room_action("Speaker")
+	c.read_sequence_input()
+	await c.main.get_tree().process_frame
+	await c.main.get_tree().process_frame
 	c.main._dialogue.finish_text()
-	c.main._dialogue.advance()
+	c.key(KEY_ENTER)
 	var still_reading: bool = not GameState.event_started(&"E2")
 	c.finish_sequence(c.main._dialogue)
 	ck(6, still_reading and GameState.event_started(&"E2") and c.main._dialogue.get_current_key() == "T116", "旧音响读完才E2")
@@ -91,7 +92,7 @@ func _opening() -> void:
 	c.key(KEY_PAGEDOWN)
 	ck(8, GameState.state == S.S0 and c.main._current_page == &"BattlePage" and c.main._dialogue.get_current_key() == "T121", "R4可翻页但状态与当前台词不变")
 	c.finish_sequence(c.main._dialogue)
-	ck(9, GameState.state == S.S1 and c.flow.content.get_node("Departure").is_visible_in_tree() and c.main._dialogue.get_current_key() == "T122", "S1独立出发内容")
+	ck(9, GameState.state == S.S1 and c.flow.safe_room.is_visible_in_tree() and not c.main._dialogue.is_playing() and not GameState.event_started(&"E5"), "S1独立出发内容")
 	_departure()
 
 func _departure() -> void:
@@ -100,12 +101,10 @@ func _departure() -> void:
 	ck(10, GameState.vital_now == before, "S1_60秒不扣")
 	c.key(KEY_DOWN)
 	ck(11, c.map.get_current_node_id() == &"entry_exit" and c.map.get_step_count() == 0 and GameState.vital_now == before, "S1未完方向无效")
-	c.finish_sequence(c.main._dialogue)
-	c.finish_sequence(c.main._dialogue)
 	c.key(KEY_DOWN, false)
 	c.key(KEY_DOWN, true, true)
 	ck(13, GameState.state == S.S1 and c.map.get_step_count() == 0, "释放与echo不出发")
-	c.key(KEY_DOWN)
+	c.departure_to_s2()
 	first_step_count = c.map.get_step_count()
 	ck(12, GameState.state == S.S2 and c.map.get_current_node_id() == &"c1" and first_step_count == 1 and GameState.vital_now == before - 1.0, "首个方向一次到c1扣1")
 
@@ -257,12 +256,10 @@ func _ending() -> void:
 	var finished: Array = []
 	c.watch(c.flow.prologue_finished, func(): finished.append(true))
 	ck(46, not GameState.event_done(&"E12") and not c.flow.finish_safehouse(&"E14", GameState.run_id) and finished.is_empty(), "后续内容未装不完成序章")
-	c.click(c.flow.safe_room.get_node("Objects/Sofa"))
-	c.finish_sequence(c.main._dialogue)
-	c.click(c.flow.safe_room.get_node("Objects/Sofa"))
 	var door: bool = c.flow.content.request_door()
 	c.finish_sequence(c.main._dialogue)
-	ck(47, door and finished.size() == 1 and not GameState.event_done(&"E13"), "上药完成即可收尾信赖可选")
+	var progress: Dictionary = c.flow.checkpoint.read_safehouse_branch()
+	ck(47, door and finished.size() == 1 and not GameState.event_done(&"E12") and not GameState.event_done(&"E13") and progress == {"r13_done": false, "trust_read": false}, "未上药也可真实收尾且保持分支")
 
 func _partial_win() -> void:
 	await _fresh()
@@ -335,7 +332,7 @@ func _guards() -> void:
 
 func _user_play() -> void:
 	await _fresh(S.S0)
-	preload("res://scripts/sp11_selftest.gd").run_story_input_test(c, ck)
+	await preload("res://scripts/sp11_selftest.gd").run_story_input_test(c, ck)
 
 func _free_pages() -> void:
 	for state: int in S.values():

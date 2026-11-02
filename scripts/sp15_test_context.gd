@@ -88,13 +88,8 @@ func frame_signature() -> Array:
 		panel.get_node("Screen/ChannelMask/RightEdge").offset_left]
 
 func opening() -> void:
-	c.finish_sequence(c.main._dialogue)
-	var nav: Control = c.main.get_node("Pages/ScenePage/PageNav")
-	nav.reading_requested.emit(c.main.get_node("Pages/ScenePage/TestOptions/OptionTwo"))
-	for i: int in range(6):
-		c.finish_sequence(c.main._dialogue)
-	c.key(KEY_DOWN)
-	c.key(KEY_DOWN, false)
+	await c.opening_to_s1()
+	c.departure_to_s2()
 
 func _make_tracked() -> Control:
 	var actor: Control = load("res://scenes/ui/BattlePage.tscn").instantiate()

@@ -21,6 +21,7 @@ var restored: bool = false
 var _component_connections: Array = []
 var _component_interactions: RefCounted
 var _investigation_before: Callable
+var _component_visuals: Array = []
 
 func remember(host: Control) -> void:
 	root = host
@@ -33,11 +34,13 @@ func remember(host: Control) -> void:
 	for id: StringName in [&"vital_changed", &"progress_changed", &"state_changed", &"event_changed"]:
 		connections[id] = GameState.get_signal_connection_list(id)
 
-func create(host: Control, initial: int = S.S0) -> void:
+func create(host: Control, initial: int = S.S0, main_script: Script = null) -> void:
 	remember(host)
 	root.hide()
 	root.process_mode = Node.PROCESS_MODE_DISABLED
 	main = load("res://scenes/Main.tscn").instantiate()
+	if main_script != null:
+		main.set_script(main_script)
 	root.get_tree().root.add_child(main)
 	attach(main)
 	GameState.set_process(false)
@@ -60,13 +63,14 @@ static func enter_domain(host: Control, initial: int = S.S2) -> void:
 	var director: Node = host.get_meta("production_flow", host._flow)
 	director._sequence_event = &""
 	host._dialogue._set_active(false)
+	if host._dialogue._s0 != null:
+		host._dialogue._s0.dispose()
 	GameState.begin_session(initial)
 	GameState.presenter = director._present
-	if host._dialogue._s0 != null:
-		host._dialogue._s0._run_id = GameState.run_id
 	host.get_node("Pages/BattlePage")._run_id = GameState.run_id
 	GameState.battle_actor = weakref(host.get_node("Pages/BattlePage"))
 	director._present(initial)
+	host._dialogue.bind_s0(director.safe_room, director.finish_s0)
 	GameState.set_process(false)
 
 func watch(event: Signal, callback: Callable) -> void:
@@ -203,7 +207,7 @@ func restore() -> bool:
 func _remember_component_callbacks(nav: Control) -> void:
 	_component_interactions = map._interactions
 	_investigation_before = _component_interactions.request_investigation
-	for event: Signal in [nav.reading_requested, _component_interactions.investigated]:
+	for event: Signal in [nav.reading_requested, nav.confirmed, _component_interactions.investigated]:
 		_component_connections.append([event, event.get_connections()])
 
 func _restore_component_callbacks() -> bool:
@@ -222,6 +226,10 @@ func _restore_component_callbacks() -> bool:
 		for connection: Dictionary in binding[1]:
 			event.connect(connection.callable, connection.flags)
 		matched = matched and event.get_connections() == binding[1]
+	for row: Array in _component_visuals:
+		row[0].visible = row[1]
+		row[0].set_process(row[2])
+		row[0].set_process_input(row[3])
 	return matched
 
 static func component_scope(host: Control, initial: int = S.S2, renderer: bool = false, legacy_map: bool = true):
@@ -231,11 +239,14 @@ static func component_scope(host: Control, initial: int = S.S2, renderer: bool =
 	enter_domain(host, initial)
 	var nav: Control = host.get_node("Pages/ScenePage/PageNav")
 	scope._remember_component_callbacks(nav)
-	nav.reading_requested.disconnect(host._dialogue._s0._on_read_requested)
-	nav.reading_requested.connect(host._dialogue._s0._placeholder)
+	var page: Control = host.get_node("Pages/ScenePage")
+	for node: Control in [page.get_node("Illustration"), page.get_node("TestOptions"), nav, host._flow.safe_room]:
+		scope._component_visuals.append([node, node.visible, node.is_processing(), node.is_processing_input()])
+	nav.reading_requested.connect(Callable(page, "_begin_reading"))
+	nav.confirmed.connect(Callable(page, "_on_confirmed"))
 	if initial == S.S0:
 		GameState.record_event(&"E1", true)
-		host._flow.content.present(initial)
+		present_component_fixture(host)
 	if legacy_map:
 		scope.map._interactions.request_investigation = Callable()
 	var callback := Callable(scope.battle, "_on_investigated")
@@ -254,3 +265,62 @@ class RenderOnly extends Node:
 	var presenting: bool = true
 	func request_page(page: StringName) -> bool:
 		return host.show_page(page)
+
+static func present_component_fixture(host: Control) -> void:
+	var page: Control = host.get_node("Pages/ScenePage")
+	page.get_node("FlowContent/Safehouse").hide()
+	page.get_node("Illustration").show()
+	page.get_node("TestOptions").show()
+	page.get_node("PageNav").set_process(true)
+	page.get_node("PageNav").set_process_input(true)
+
+func room_action(id: String) -> void:
+	var grid: Control = flow.safe_room.grid
+	var cell: Vector2i = grid.objects[id].cell
+	var previous: Vector2i = grid.current_cell
+	click_cell(cell)
+	if id != "Door" and previous != cell and grid.current_cell == cell:
+		key(KEY_ENTER)
+		key(KEY_ENTER, false)
+
+func click_cell(cell: Vector2i) -> void:
+	var grid: Control = flow.safe_room.grid
+	var position: Vector2 = grid.get_global_transform_with_canvas() * grid.center(cell)
+	for pressed: bool in [true, false]:
+		var event := InputEventMouseButton.new()
+		event.position = position
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = pressed
+		main.get_viewport().push_input(event, true)
+
+func read_sequence_input() -> void:
+	var player: Control = main._dialogue
+	var keys: Array = player._keys.duplicate()
+	for index: int in range(keys.size() + 1):
+		if not player.is_playing() or player._keys != keys:
+			break
+		player.finish_text()
+		if player.get_current_mode() == "read":
+			key(KEY_ENTER)
+			key(KEY_ENTER, false)
+		else:
+			player.advance_time(100.0)
+
+func opening_to_s1() -> bool:
+	room_action("Speaker")
+	read_sequence_input()
+	await main.get_tree().process_frame
+	await main.get_tree().process_frame
+	for phase: int in range(4):
+		read_sequence_input()
+	return GameState.state == S.S1 and GameState.event_done(&"E4")
+
+func departure_to_s2() -> bool:
+	flow.request_page(&"ScenePage")
+	room_action("Door")
+	for phase: int in range(3):
+		read_sequence_input()
+	return GameState.state == S.S2 and map.get_current_node_id() == &"c1" and map.get_step_count() == 1
+
+
+

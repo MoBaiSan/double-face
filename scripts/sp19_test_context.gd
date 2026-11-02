@@ -31,18 +31,17 @@ func _arrival(id: String) -> void:
 
 func ready_door(host: Control, trust: bool = false) -> void:
 	await fresh(host)
-	complete_sofa()
 	if trust:
-		GameState.record_event(&"E13", true)
+		complete_sofa()
 
 func exit_ids() -> Array:
-	return ids().filter(func(id: String): return id != "T176" and id != "T177")
+	return ids().filter(func(id: String): return id not in ["T176", "T177"] + room.TRUST_IDS)
 
 func finished_once(trust: bool = false) -> bool:
 	return exit_ids() == ["T193"] and c.flow.checkpoint.writes == 1 and receipts.size() == 1 and finished.size() == 1 and c.event_count(&"E14") == 1 and valid_document(document(), trust)
 
 static func valid_document(doc: Dictionary, trust: bool = false) -> bool:
-	return doc.get("version") == 1 and doc.get("checkpoint") == "safehouse_exit" and doc.get("progress") == {"safehouse_reached": true, "safehouse_exit": true, "r13_done": true, "trust_read": trust}
+	return doc.get("version") == 1 and doc.get("checkpoint") == "safehouse_exit" and doc.get("progress") == {"safehouse_reached": true, "safehouse_exit": true, "r13_done": trust, "trust_read": trust}
 
 func phase_contract() -> bool:
 	if ep.phase == ep.Phase.READING:
@@ -130,7 +129,7 @@ func clean_words(texts: Array, global_only: bool = false) -> bool:
 	return true
 
 func permitted_ui() -> bool:
-	var allowed: Array[String] = ["", "沙发", "斑的旧伤", "门", "还有没看过的地方。", "自动保存失败，正在重试。", "内容加载失败，请重试。"]
+	var allowed: Array[String] = ["", "安全屋", "旧沙发", "旧音响", "门", "还有没听完的内容。", "还有没看过的地方。", "自动保存失败，正在重试。", "内容加载失败，请重试。"]
 	for text: String in text_fields(room):
 		if text not in allowed:
 			print("[SP-19] unexpected_ui=%s" % text)
@@ -138,7 +137,7 @@ func permitted_ui() -> bool:
 	return true
 
 func no_extra_nodes() -> bool:
-	if room.get_node("Objects").get_child_count() != 4 or room.find_children("*", "Button", true, false).size() != 4:
+	if room.get_node("Objects").get_child_count() != 3 or room.find_children("*", "Button", true, false).size() != 0:
 		return false
 	for item: Node in [art] + descendants(art):
 		if item is Button or item is CharacterBody2D or item is TileMapLayer:
@@ -168,7 +167,8 @@ func global_texts() -> Array[String]:
 
 func read_in_new_process(path: String) -> bool:
 	var output: Array = []
-	var args: PackedStringArray = ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://scripts/sp19_readback_selftest.gd", "--", ProjectSettings.globalize_path(path)]
+	var args: PackedStringArray = ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://scripts/sp19_readback_selftest.gd", "--", ProjectSettings.globalize_path(path), "false_false"]
 	var code: int = OS.execute(OS.get_executable_path(), args, output, true)
 	var text: String = "\n".join(output)
 	return code == 0 and text.contains("SP19_READBACK_OK") and not text.contains("SCRIPT ERROR")
+

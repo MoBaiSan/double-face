@@ -37,13 +37,13 @@ func _valid_session(session: int) -> bool:
 	return is_instance_valid(flow) and GameState.presenter == flow._present and session == GameState.run_id and GameState.state == GameState.State.S6
 
 func request_exit(session: int) -> bool:
-	if pending or committed or not _valid_session(session) or not GameState.event_done(&"E12"):
+	if pending or committed or not _valid_session(session):
 		return false
 	if not room.is_visible_in_tree() or room.busy or flow.dialogue.is_playing():
 		return false
 	_run = session
 	_payload = {"safehouse_reached": true, "safehouse_exit": true,
-		"r13_done": true, "trust_read": GameState.event_done(&"E13")}
+		"r13_done": GameState.event_done(&"E12"), "trust_read": GameState.event_done(&"E13")}
 	pending = true
 	accepted += 1
 	_elapsed = 0.0

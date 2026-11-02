@@ -61,14 +61,14 @@ func _layout() -> void:
 	for node: Node in h.descendants(h.room):
 		if node is Label or node is Button or node is RichTextLabel:
 			if not node.text.is_empty(): words.append(node.text)
-	ck(3, words.is_empty(), "room_and_popup_have_no_placeholder_words")
+	ck(3, words == ["安全屋"], "room_and_popup_have_no_placeholder_words")
 	var image := Image.create(2, 2, false, Image.FORMAT_RGBA8)
 	image.fill(Color("#86724F"))
 	var texture := ImageTexture.create_from_image(image)
-	var rect: Rect2 = h.button("Ban").get_global_rect()
+	var rect: Rect2 = h.button("Sofa").get_global_rect()
 	art.set_artwork(texture)
-	ck(4, art.get_node("Artwork").texture == texture and art.get_node("Artwork").visible and not art.get_node("VisualRoot").visible and h.button("Ban").get_global_rect() == rect, "replace_entire_artwork_at_one_property")
-	h.click("Ban")
+	ck(4, art.get_node("Artwork").texture == texture and art.get_node("Artwork").visible and not art.get_node("Placeholder").visible and h.button("Sofa").get_global_rect() == rect, "replace_entire_artwork_at_one_property")
+	h.click("Sofa")
 	ck(5, h.player.get_current_key() == "T178" and h.room.busy, "artwork_does_not_steal_real_click")
 	art.set_artwork(null)
 	h.finish_reading()
@@ -76,9 +76,9 @@ func _layout() -> void:
 
 func _clear_targets() -> bool:
 	var rects: Array[Rect2] = []
-	if h.room.get_node("Objects").get_child_count() != 4:
+	if h.room.get_node("Objects").get_child_count() != 3:
 		return false
-	for id: String in ["Sofa", "Scar", "Ban", "Door"]:
+	for id: String in ["Sofa", "Speaker", "Door"]:
 		var rect: Rect2 = h.button(id).get_global_rect()
 		if not h.room.visual.get_global_rect().encloses(rect) or rect.size.x <= 0 or rect.size.y <= 0:
 			return false
@@ -90,25 +90,22 @@ func _clear_targets() -> bool:
 	return h.room.visual.mouse_filter == Control.MOUSE_FILTER_IGNORE
 
 func _shapes_at_targets() -> bool:
-	var names: Dictionary = {"Sofa":"SofaSeat", "Scar":"Scar", "Ban":"BanHead", "Door":"Door"}
-	for id: String in names:
-		var shape: CanvasItem = h.room.visual.get_node("VisualRoot/" + names[id])
-		if not shape.is_visible_in_tree() or h._color(shape).a < 0.9:
+	for id: String in ["Sofa", "Speaker", "Door"]:
+		var center: Vector2 = h.room.grid.get_global_transform_with_canvas() * h.room.grid.center(h.room.grid.objects[id].cell)
+		if not center.is_equal_approx(h.button(id).get_global_rect().get_center()):
 			return false
-		if not Geometry2D.is_point_in_polygon(h.button(id).get_global_rect().get_center(), h._polygon(shape)):
-			return false
-	return true
+	return h.room.grid.valid and h.room.grid.dimensions == Vector2i(5, 5)
 
 func _target_rects() -> Dictionary:
 	var out: Dictionary = {}
-	for id: String in ["Sofa", "Scar", "Ban", "Door"]:
+	for id: String in ["Sofa", "Speaker", "Door"]:
 		out[id] = str(h.button(id).get_global_rect())
 	return out
 
 func _reading() -> void:
 	await _fresh()
 	state.vital_now = 73.0
-	h.click("Ban")
+	h.click("Sofa")
 	ck(6, h.player.get_current_key() == "T178" and not h.room.interaction("Sofa").read and not state.event_done(&"E12"), "ban_available_immediately_on_s6_entry")
 	var exact: bool = true
 	var single: bool = true
@@ -122,24 +119,24 @@ func _reading() -> void:
 	ck(7, exact, "trust_exact_text_and_speakers_t178_to_t189")
 	ck(8, single and not h.player.is_playing() and h.ids() == IDS, "trust_confirm_advances_exactly_twelve_in_order")
 	await process_frame
-	ck(9, state.state == state.State.S6 and h.c.main._current_page == &"ScenePage" and not h.room.busy and root.gui_get_focus_owner() == h.button("Ban"), "trust_returns_to_room_and_ban_focus")
-	ck(10, state.vital_now == 73.0 and not h.room.interaction("Ban").read and not h.room.interaction("Ban").has_checkmark() and h.room.interaction("Ban").get_read_shade().a == 0.0, "trust_does_not_pay_or_gray_ban")
+	ck(9, state.state == state.State.S6 and h.c.main._current_page == &"ScenePage" and not h.room.busy and root.gui_get_focus_owner() == h.room.grid, "trust_returns_to_room_and_ban_focus")
+	ck(10, state.vital_now == 73.0 and not h.room.interaction("Sofa").read and not h.room.interaction("Sofa").has_checkmark() and h.room.interaction("Sofa").get_read_shade().a == 0.0, "trust_does_not_pay_or_gray_ban")
 
 func _replay() -> void:
 	await _fresh()
-	h.click("Ban")
+	h.click("Sofa")
 	h.finish_reading()
-	h.click("Ban")
-	var again: bool = h.player.get_current_key() == "T178" and h.player.is_playing()
+	h.click("Sofa")
+	var again: bool = h.player.get_current_key() == "T176" and h.player.is_playing() and h.room.medical.visible
 	h.finish_reading()
-	ck(11, again and h.ids() == IDS + IDS and not h.button("Ban").disabled, "completed_trust_can_replay_all_twelve")
+	ck(11, again and h.ids() == IDS + ["T176", "T177"] and h.room.interaction("Sofa").read, "completed_trust_can_replay_all_twelve")
 	ck(12, h.c.event_count(&"E13") == 1 and h.c.event_count(&"E13", false) == 1 and not state.event_done(&"E12"), "replay_records_e13_once_without_r13")
-	ck(13, _clear_targets() and h.room.get_node("Objects").visible and not h.room.interaction("Sofa").read and not h.room.interaction("Scar").read, "replay_keeps_all_four_locations")
+	ck(13, _clear_targets() and h.room.get_node("Objects").visible and h.room.interaction("Sofa").read and not h.room.has_node("Objects/Scar"), "replay_keeps_all_four_locations")
 	await _fresh()
-	h.click("Ban")
+	h.click("Sofa")
 	h.player._finish(true)
 	var partial: bool = not state.event_done(&"E13") and not h.room.busy
-	h.click("Ban")
+	h.click("Sofa")
 	ck(14, partial and h.player.get_current_key() == "T178" and h.ids() == ["T178", "T178"], "interrupted_trust_not_marked_complete")
 	h.finish_reading()
 
@@ -150,9 +147,9 @@ func _permissions() -> void:
 	for ids: Array in invalid:
 		rejected = not h.room.request_room_sequence(&"trust", ids) and rejected
 	ck(15, rejected and h.lines.is_empty() and not h.player.is_playing(), "trust_rejects_partial_mixed_sequences_before_any_line")
-	h.click("Ban")
+	h.click("Sofa")
 	var key: String = h.player.get_current_key()
-	for id: String in ["Sofa", "Scar", "Ban", "Door"]:
+	for id: String in ["Sofa", "Speaker", "Door"]:
 		h.click(id)
 	ck(16, h.player.get_current_key() == key and h.ids() == ["T178"] and h.exit_service.accepted == 0, "busy_trust_cannot_be_replaced_by_objects")
 	h.key(KEY_ESCAPE)
@@ -160,12 +157,12 @@ func _permissions() -> void:
 	ck(17, denied and not h.player.is_typing() and h.player.get_current_key() == "T178" and not state.event_done(&"E13"), "trust_escape_finishes_sentence_without_skipping")
 	h.finish_reading()
 	h.click("Scar")
-	ck(18, h.player.get_current_key() == "T190" and h.player._keys == ["T190"], "scar_remains_separate_detail_sequence")
+	ck(18, not h.player.is_playing() and not h.room.request_object("Scar") and h.player.get_lines().has("T190"), "scar_remains_separate_detail_sequence")
 	h.finish_reading()
 
 func _medical() -> void:
 	await _fresh()
-	h.click("Sofa")
+	h.begin_medical()
 	var med: Control = h.room.medical
 	var rect: Rect2 = med.frame.get_global_rect()
 	var style: StyleBoxFlat = med.frame.get_theme_stylebox("panel") as StyleBoxFlat
@@ -180,25 +177,24 @@ func _medical() -> void:
 	original = original and h.player.get_current_key() == "T177" and h.player.get_visible_text() == h.T177
 	h.key(KEY_ENTER)
 	await process_frame
-	ck(22, original and h.ids() == ["T176","T177"] and h.room.interaction("Sofa").read and not h.room.busy and root.gui_get_focus_owner() == h.button("Sofa"), "medical_close_restores_original_two_line_story")
+	ck(22, original and h.ids() == ["T176","T177"] and h.room.interaction("Sofa").read and not h.room.busy and root.gui_get_focus_owner() == h.room.grid, "medical_close_restores_original_two_line_story")
 	h.click("Sofa")
-	ck(23, state.event_done(&"E12") and h.c.event_count(&"E12") == 1 and not state.event_done(&"E13"), "medical_does_not_change_sofa_confirmation")
+	ck(23, state.event_done(&"E12") and h.c.event_count(&"E12") == 1 and state.event_done(&"E13"), "medical_does_not_change_sofa_confirmation")
 	print("[SP-18] medical=%s" % JSON.stringify({"popup":str(rect), "picture":str(med.picture.get_global_rect()), "dialogue":str(h.player._body.get_global_rect())}))
 
 func _exit_paths() -> void:
 	await _fresh()
-	h.complete_sofa()
 	h.click("Door")
 	h.finish_reading()
-	ck(24, h.finished.size() == 1 and h.c.flow.checkpoint.writes == 1 and h.document().progress.trust_read == false and not state.event_started(&"E13"), "unread_trust_still_finishes_prologue_once")
+	ck(24, h.finished.size() == 1 and h.c.flow.checkpoint.writes == 1 and h.document().progress.trust_read == false and h.document().progress.r13_done == false and not state.event_started(&"E13") and not state.event_done(&"E12"), "unread_trust_still_finishes_prologue_once")
 	await _fresh()
-	h.click("Ban")
+	h.click("Sofa")
 	h.finish_reading()
 	h.complete_sofa()
 	h.click("Door")
 	h.finish_reading()
 	ck(25, h.finished.size() == 1 and h.c.flow.checkpoint.writes == 1 and h.document().progress.trust_read == true and state.event_done(&"E14"), "read_trust_uses_same_single_exit_save")
-	ck(26, not h.room.request_object("Ban") and not h.room.get_node("Objects").visible, "finished_prologue_cannot_reopen_trust")
+	ck(26, not h.room.request_object("Sofa") and not h.room.get_node("Objects").visible, "finished_prologue_cannot_reopen_trust")
 
 func _lifecycle() -> void:
 	await _fresh()
@@ -207,10 +203,10 @@ func _lifecycle() -> void:
 			node.call("_process", 60.0)
 	ck(27, h.lines.is_empty() and not h.player.is_playing() and not state.event_started(&"E13"), "trust_never_starts_from_waiting")
 	h.c.main.show_page(&"MapPage")
-	var hidden: bool = not h.room.request_object("Ban")
+	var hidden: bool = not h.room.request_object("Sofa")
 	h.c.main.show_page(&"ScenePage")
 	ck(28, hidden and not h.room.busy and h.lines.is_empty(), "hidden_room_does_not_start_trust")
-	h.click("Ban")
+	h.click("Sofa")
 	h.room._sequence_run -= 1
 	h.finish_reading()
 	ck(29, not state.event_done(&"E13") and not h.room.busy, "stale_trust_completion_cannot_mark_watched")
@@ -221,7 +217,7 @@ func _lifecycle() -> void:
 
 func _keyboard() -> void:
 	await _fresh()
-	h.button("Ban").grab_focus()
+	h.focus_object("Sofa")
 	h.key(KEY_ENTER)
 	ck(31, h.player.get_current_key() == "T178" and h.player.is_playing() and not state.event_done(&"E12"), "keyboard_ban_starts_without_sofa")
 	h.finish_reading()

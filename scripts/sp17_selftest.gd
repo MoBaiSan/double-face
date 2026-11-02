@@ -35,12 +35,12 @@ func _layout() -> void:
 	h.key(KEY_RIGHT)
 	ck(2, absent and h.c.map.get_step_count() == step, "safe_room_has_no_map_or_movable_actor")
 	var targets: Array = h.descendants(h.room).filter(func(node: Node): return node is Control and node.focus_mode != Control.FOCUS_NONE)
-	ck(3, targets.size() == 4 and targets.map(func(node: Node): return String(node.name)) == ["Sofa", "Scar", "Ban", "Door"] and h.room.interaction("Sofa").progression and not h.room.interaction("Scar").progression and not h.room.interaction("Door").progression and not h.room.interaction("Ban").progression, "exactly_four_room_targets_with_optional_trust")
+	ck(3, targets.size() == 1 and targets[0] == h.room.grid and h.room.grid.objects.keys() == ["Sofa", "Speaker", "Door"] and h.room.interaction("Sofa").progression and h.room.interaction("Speaker").progression and not h.room.interaction("Door").progression, "three_objects_on_25_cell_grid")
 	ck(5, h.targets_clear(), "hit_rects_clear_and_visible")
 	await h.fresh(host)
 	var silent: bool = h.page_inputs()
 	ck(8, silent and h.lines.is_empty() and not h.player.is_playing() and not GameState.event_done(&"E12"), "entrance_stays_silent_per_run")
-	h.click("Sofa")
+	h.begin_medical()
 	ck(6, h.player.get_current_key() == "T176" and h.room.medical.picture.get_node("VisualRoot/Hand").is_visible_in_tree(), "sofa_real_mouse_starts_dressing")
 	await host.get_tree().process_frame
 	ck(4, _medical_art_contract(), "centered_medical_illustration_contract")
@@ -49,9 +49,10 @@ func _keyboard() -> void:
 	await h.fresh(host)
 	var position: StringName = h.c.map.get_current_node_id()
 	var step: int = h.c.map.get_step_count()
-	h.button("Sofa").grab_focus()
+	h.read_trust()
+	h.focus_object("Sofa")
 	h.key(KEY_RIGHT)
-	ck(34, host.get_viewport().gui_get_focus_owner() == h.button("Scar") and h.c.map.get_current_node_id() == position and h.c.map.get_step_count() == step, "arrow_keys_only_focus_objects")
+	ck(34, host.get_viewport().gui_get_focus_owner() == h.room.grid and h.room.grid.current_cell == Vector2i(2, 3) and h.c.map.get_current_node_id() == position and h.c.map.get_step_count() == step, "arrow_keys_only_focus_objects")
 	h.key(KEY_LEFT)
 	h.key(KEY_ENTER)
 	var reading: bool = h.player.get_current_key() == "T176" and h.room.medical.visible
@@ -66,7 +67,7 @@ func _keyboard() -> void:
 
 func _dialogue() -> void:
 	await h.fresh(host)
-	h.click("Sofa")
+	h.begin_medical()
 	h.c.click(h.room.medical.frame)
 	h.player.finish_text()
 	var data: Dictionary = h.player.get_lines()
@@ -83,7 +84,7 @@ func _dialogue() -> void:
 
 func _cancel() -> void:
 	await h.fresh(host)
-	h.click("Sofa")
+	h.begin_medical()
 	h.c.click(h.room.medical.frame)
 	h.key(KEY_ESCAPE)
 	ck(12, h.player.get_current_key() == "T176" and not h.player.is_typing() and h.player.get_visible_text() == H.T176 and h.ids() == ["T176"] and not GameState.event_done(&"E12"), "dressing_cancel_only_finishes_line")
@@ -98,15 +99,24 @@ func _detail() -> void:
 	await h.fresh(host)
 	GameState.vital_now = 73.0
 	var progress: Dictionary = GameState.capture_session()
-	for i: int in range(2):
-		h.click("Scar")
-		h.finish_reading()
-	ck(15, h.lines == [["T190", "旁白", H.T190], ["T190", "旁白", H.T190]], "scar_repeat_replays_approved_ids")
-	var item: Control = h.room.interaction("Scar")
-	ck(18, item.get_script() == preload("res://scripts/interactable.gd") and item.read and item.has_checkmark() and item.get_read_shade().a > 0.0 and not h.button("Scar").disabled, "shared_read_feedback_preserved")
-	h.click("Scar")
+	var denied: bool = true
+	for i: int in range(3):
+		denied = not h.room.request_object("Scar") and not h.room.request_object("Ban") and denied
+		h.c.click_cell(Vector2i(0, 0))
+		h.key(KEY_ENTER)
+	ck(15, denied and h.lines.is_empty() and not h.room.has_node("Objects/Scar") and not h.room.has_node("Objects/Ban"), "retired_targets_cannot_read")
+	h.read_trust()
+	h.lines.clear()
+	h.click("Sofa")
 	h.finish_reading()
-	ck(16, h.ids() == ["T190", "T190", "T190"] and GameState.vital_now == 73.0 and GameState.capture_session() == progress and not GameState.event_done(&"E12"), "scar_never_pays_or_progresses")
+	var item: Control = h.room.interaction("Sofa")
+	ck(18, item.get_script() == preload("res://scripts/interactable.gd") and item.read and item.has_checkmark() and item.get_read_shade().a > 0.0, "shared_read_feedback_preserved")
+	await h.fresh(host)
+	GameState.vital_now = 73.0
+	progress = GameState.capture_session()
+	h.c.click_cell(Vector2i(0, 0))
+	h.key(KEY_ENTER)
+	ck(16, h.ids().is_empty() and GameState.vital_now == 73.0 and GameState.capture_session() == progress, "ordinary_cell_never_pays_or_progresses")
 
 func _allowlist() -> void:
 	await h.fresh(host)
@@ -124,34 +134,28 @@ func _allowlist() -> void:
 	rejected = not h.room.request_room_sequence(&"unknown", ["T190"]) and rejected
 	await host.get_tree().process_frame
 	rejected = rejected and h.lines.is_empty() and not h.player.is_playing() and not h.room.busy
-	h.click("Scar")
-	var unchanged: bool = not h.room.request_room_sequence(&"detail", ["T191"]) and h.player.get_current_key() == "T190"
-	h.finish_reading()
-	var allowed_text: bool = h.ids() == ["T190"] and h.lines[0][2] == H.T190
+	var unchanged: bool = not h.room.request_object("Scar") and not h.room.request_room_sequence(&"detail", ["T190"]) and h.lines.is_empty()
+	var allowed_text: bool = true
 	for node: Node in h.descendants(h.room):
 		if node is Label or node is Button:
-			allowed_text = allowed_text and node.text in ["", "沙发", "斑的旧伤", "门"]
-	ck(17, rejected and unchanged and allowed_text and h.player.get_lines().has("T191"), "narration_matches_allowlist")
+			allowed_text = allowed_text and node.text in ["", "安全屋"]
+	ck(17, rejected and unchanged and allowed_text and h.player.get_lines().has("T191") and h.player.get_lines().has("T190"), "narration_matches_allowlist")
 
 func _door() -> void:
 	await h.fresh(host)
 	h.click("Door")
-	h.click("Sofa")
+	var untouched: bool = not GameState.event_done(&"E12") and not GameState.event_done(&"E13")
 	h.finish_reading()
-	h.click("Door")
-	ck(19, h.c.flow.checkpoint.attempts == 0 and h.exit_service.accepted == 0 and h.receipts.is_empty(), "door_before_sofa_does_nothing")
-	h.click("Sofa")
-	h.click("Door")
-	h.finish_reading()
-	ck(20, h.exit_service.accepted == 1 and h.exit_service.committed and h.c.flow.checkpoint.attempts == 1 and h.receipts.size() == 1, "door_mouse_starts_one_exit")
+	ck(19, untouched and h.exit_service.committed and h.document().progress.r13_done == false and h.document().progress.trust_read == false, "untreated_exit_keeps_false_flags")
+	ck(20, h.exit_service.accepted == 1 and h.c.flow.checkpoint.attempts == 1 and h.receipts.size() == 1, "door_mouse_starts_one_exit")
 	var doc: Dictionary = h.document()
-	ck(21, doc.get("version") == 1 and doc.get("checkpoint") == "safehouse_exit" and doc.get("progress") == {"safehouse_reached": true, "safehouse_exit": true, "r13_done": true, "trust_read": false}, "exit_checkpoint_round_trip")
+	ck(21, doc.get("version") == 1 and doc.get("checkpoint") == "safehouse_exit" and doc.get("progress") == {"safehouse_reached": true, "safehouse_exit": true, "r13_done": false, "trust_read": false}, "exit_checkpoint_round_trip")
 	for i: int in range(3):
 		h.click("Door")
 		h.key(KEY_ENTER)
 	ck(22, h.c.flow.checkpoint.writes == 1 and h.c.flow.checkpoint.attempts == 1 and h.exit_service.accepted == 1 and h.receipts.size() == 1, "repeated_door_one_success")
-	ck(30, h.receipts.size() == 1 and GameState.event_done(&"E14") and h.finished.size() == 1 and h.ids() == ["T176", "T177", "T193"], "r15_finishes_after_saved")
-	ck(37, not h.room.interaction("Scar").read and not GameState.event_started(&"E13") and not GameState.event_done(&"E13") and h.ids() == ["T176", "T177", "T193"], "trust_is_not_required_or_started")
+	ck(30, GameState.event_done(&"E14") and h.finished.size() == 1 and h.ids() == ["T193"], "r15_finishes_after_saved")
+	ck(37, not GameState.event_started(&"E13") and not GameState.event_done(&"E12") and h.ids() == ["T193"], "trust_is_not_required_or_started")
 
 func _save_failure() -> void:
 	await h.fresh(host, S.S4)
@@ -259,12 +263,12 @@ func _persistence() -> void:
 	h.finish_reading()
 	var room_id: int = h.room.get_instance_id()
 	var pages: bool = h.page_inputs()
-	ck(32, pages and h.c.flow.safe_room.get_instance_id() == room_id and h.room.interaction("Sofa").read and h.room.interaction("Scar").read and GameState.event_done(&"E12") and h.ids() == ["T176", "T177", "T190"], "page_return_preserves_room")
+	ck(32, pages and h.c.flow.safe_room.get_instance_id() == room_id and h.room.interaction("Sofa").read and not h.room.has_node("Objects/Scar") and GameState.event_done(&"E12") and h.ids() == h.room.TRUST_IDS + ["T176", "T177"], "page_return_preserves_room")
 	GameState.vital_now = 73.0
 	GameState.drain_time(30.0)
 	h.click("Scar")
 	GameState.drain_time(30.0)
-	ck(33, GameState.vital_now == 73.0 and h.player.get_current_key() == "T190", "s6_sixty_seconds_no_drain")
+	ck(33, GameState.vital_now == 73.0 and not h.player.is_playing(), "s6_sixty_seconds_no_drain")
 	pages = h.page_inputs() and pages
 	h.finish_reading()
 	h.c.flow.checkpoint.replace_file = func(_a: String, _b: String): return ERR_BUSY
@@ -278,18 +282,20 @@ func _persistence() -> void:
 
 func _busy() -> void:
 	await h.fresh(host)
-	h.click("Scar")
-	for id: String in ["Sofa", "Scar", "Door"]:
+	h.click("Sofa")
+	for id: String in ["Sofa", "Speaker", "Door"]:
 		h.click(id)
-	var held: bool = h.player.get_current_key() == "T190" and h.ids() == ["T190"] and h.exit_service.accepted == 0
+	var held: bool = h.player.get_current_key() == "T178" and h.ids() == ["T178"] and h.exit_service.accepted == 0
 	h.finish_reading()
-	h.click("Scar")
-	ck(36, held and h.player.get_current_key() == "T190" and h.ids() == ["T190", "T190"], "busy_reader_blocks_room_reentry")
+	h.click("Sofa")
+	ck(36, held and h.player.get_current_key() == "T176" and h.ids() == h.room.TRUST_IDS + ["T176"], "busy_reader_blocks_room_reentry")
 
 func _recovery() -> void:
 	var recovered: bool = true
 	for key: String in ["T176", "T177"]:
 		await h.fresh(host)
+		h.read_trust()
+		h.lines.clear()
 		var data: Dictionary = h.player._lines[key].duplicate(true)
 		h.player._lines.erase(key)
 		h.click("Sofa")
@@ -309,7 +315,7 @@ func _recovery() -> void:
 		else:
 			GameState.begin_session(S.S6)
 		var snapshot: Dictionary = GameState.capture_session()
-		for id: String in ["Sofa", "Scar", "Door"]:
+		for id: String in ["Sofa", "Speaker", "Door"]:
 			rejected = not h.room.request_object(id) and rejected
 		rejected = rejected and h.lines.is_empty() and h.c.flow.checkpoint.attempts == 0 and GameState.capture_session() == snapshot
 	ck(39, rejected, "wrong_state_or_hidden_target_rejected")
@@ -319,9 +325,8 @@ func _cleanup() -> void:
 	for i: int in range(2):
 		await h.fresh(host)
 		h.room.configure(h.c.flow, h.exit_service)
-		h.click("Scar")
-		h.finish_reading()
-		ok = ok and h.ids() == ["T190"] and h.room.interaction("Scar").read
+		h.read_trust()
+		ok = ok and h.ids() == h.room.TRUST_IDS and GameState.event_done(&"E13") and h.c.event_count(&"E13") == 1
 	await h.close()
 	ck(40, ok and h.clean, "context_cleanup_no_stale_connections")
 ## 新版上药画幅缩小，保留双人、肩手绷带交叠与有效颜色/可见面积检查。
@@ -346,3 +351,4 @@ func _medical_art_contract() -> bool:
 			return false
 		shapes[id] = h._polygon(node)
 	return h._figures(shapes, w, height) and h._contacts(shapes, w * height) and h._art_visibility(root, shapes, w * height)
+

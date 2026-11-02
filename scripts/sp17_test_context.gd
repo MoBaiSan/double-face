@@ -15,12 +15,13 @@ var finished: Array = []
 var paths: Array[String] = []
 var clean: bool = true
 var serial: int = 0
+var main_script: Script
 
 func fresh(host: Control, initial: int = S.S6) -> void:
 	if c != null:
 		clean = await c.close() and clean
 	c = C.new()
-	await c.create(host, initial)
+	await c.create(host, initial, main_script)
 	room = c.flow.safe_room
 	exit_service = c.flow.room_exit
 	player = c.main._dialogue
@@ -42,11 +43,14 @@ func _line(id: String) -> void:
 func ids() -> Array:
 	return lines.map(func(row: Array): return row[0])
 
-func button(id: String) -> Button:
+func button(id: String) -> Control:
 	return room.get_node("Objects/" + id)
 
 func click(id: String) -> void:
-	c.click(button(id))
+	if room.grid.objects.has(id):
+		c.room_action(id)
+	else:
+		room.request_object(id)
 
 func key(code: Key) -> void:
 	c.key(code, true)
@@ -55,10 +59,26 @@ func key(code: Key) -> void:
 func finish_reading() -> void:
 	c.finish_sequence(player)
 
+func read_trust() -> void:
+	if not GameState.event_done(&"E13"):
+		click("Sofa")
+		finish_reading()
+
+func begin_medical() -> void:
+	read_trust()
+	lines.clear()
+	click("Sofa")
+
 func complete_sofa() -> void:
+	read_trust()
 	click("Sofa")
 	finish_reading()
 	click("Sofa")
+
+func focus_object(id: String) -> void:
+	room.grid.select_object(id)
+	room.grid.grab_focus()
+
 
 func file_text() -> String:
 	return FileAccess.get_file_as_string(c.flow.checkpoint.path)
@@ -85,7 +105,7 @@ func descendants(node: Node) -> Array[Node]:
 func targets_clear() -> bool:
 	var rects: Array[Rect2] = []
 	var paper: Rect2 = room.get_node("PaperFrame").get_global_rect()
-	for id: String in ["Sofa", "Scar", "Door"]:
+	for id: String in ["Sofa", "Speaker", "Door"]:
 		var rect: Rect2 = button(id).get_global_rect()
 		if rect.size.x <= 0.0 or rect.size.y <= 0.0 or not paper.encloses(rect):
 			return false
@@ -248,3 +268,4 @@ func page_inputs() -> bool:
 	var moved: bool = c.main._current_page == &"MapPage"
 	key(KEY_PAGEUP)
 	return moved and c.main._current_page == &"ScenePage" and GameState.state == S.S6
+

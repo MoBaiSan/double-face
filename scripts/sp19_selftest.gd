@@ -29,7 +29,7 @@ func ck(id: int, ok: bool, label: String) -> void:
 func _entry() -> void:
 	await h.fresh(host)
 	h.click("Door")
-	ck(1, h.ids().is_empty() and h.c.flow.checkpoint.attempts == 0 and not h.art.visible and not GameState.event_done(&"E14"), "r13_required_before_exit")
+	ck(1, h.ids() == ["T193"] and h.c.flow.checkpoint.attempts == 0 and h.art.visible and not GameState.event_done(&"E12") and not GameState.event_done(&"E14"), "r13_required_before_exit")
 	await h.ready_door(host)
 	h.click("Door")
 	h.finish_reading()
@@ -58,7 +58,7 @@ func _reading() -> void:
 
 func _keyboard() -> void:
 	await h.ready_door(host)
-	h.button("Door").grab_focus()
+	h.focus_object("Door")
 	h.key(KEY_ENTER)
 	ck(5, h.player.get_current_key() == "T193" and h.exit_service.pending and h.c.flow.checkpoint.writes == 0, "keyboard_door_starts_t193")
 
@@ -92,10 +92,10 @@ func _permissions() -> void:
 	ok = not h.room.request_room_sequence(&"sofa", ["T193"]) and not h.room.request_room_sequence(&"detail", ["T193"])
 	h.click("Scar")
 	h.finish_reading()
-	ck(13, ok and h.ids() == ["T176","T177","T190"], "t193_not_available_to_sofa_or_scar")
+	ck(13, ok and h.ids().is_empty() and not h.room.request_object("Scar") and not h.room.request_object("Speaker"), "t193_not_available_to_sofa_or_scar")
 	h.click("Door")
 	initial = h.ids()
-	for id: String in ["Sofa","Scar","Door"]:
+	for id: String in ["Sofa","Speaker","Door"]:
 		h.click(id)
 	ck(14, h.ids() == initial and h.player._keys == ["T193"] and h.player.is_playing() and h.exit_service.accepted == 1, "busy_exit_cannot_be_replaced")
 
@@ -275,7 +275,7 @@ func _ending() -> void:
 	var stable: bool = not h.room.request_object("Sofa") and not h.room.request_object("Scar") and not h.room.request_object("Door")
 	ck(35, stable and h.c.main.get_instance_id() == main_id and h.c.main._current_page == &"ScenePage" and GameState.state == S.S6 and h.phase_contract() and not h.room.get_node("Objects").visible, "finish_stays_s6_without_title_scene")
 	ck(36, GameState.vital_now == 73.0 and h.finished_once(), "s6_reading_and_ending_do_not_drain")
-	ck(37, not h.room.interaction("Scar").read and not GameState.event_started(&"E13") and not GameState.event_done(&"E13") and h.exit_ids() == ["T193"], "exit_does_not_mark_scar_or_r14")
+	ck(37, not h.room.has_node("Objects/Scar") and not GameState.event_done(&"E12") and not GameState.event_started(&"E13") and not GameState.event_done(&"E13") and h.exit_ids() == ["T193"], "exit_does_not_mark_scar_or_r14")
 
 func _configure() -> void:
 	await h.ready_door(host)
@@ -284,3 +284,4 @@ func _configure() -> void:
 	h.click("Door")
 	h.finish_reading()
 	ck(38, h.finished_once() and h.room.exit_line_finished.get_connections().size() == 1, "configure_twice_one_connection")
+

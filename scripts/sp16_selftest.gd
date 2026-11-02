@@ -117,14 +117,14 @@ func ck(id: int, passed: bool) -> void:
 func _map_cases() -> void:
 	await _fresh(GameState.State.S0)
 	ck(1, not t.map_slot.visible and not t.battle_slot.visible and t.map_slot.text == "" and t.battle_slot.text == "")
-	var nav: Control = c.main._scene_nav
-	var first: Control = nav.get_candidates()[0]
-	ck(2, nav.get_selected() == first and nav._outlines[first.get_instance_id()].active)
-	c.finish_sequence(c.main._dialogue)
-	_key(KEY_DOWN)
-	var moved: bool = nav.get_selected() != first
+	var grid: Control = c.flow.safe_room.grid
+	var first := Vector2i(2, 2)
+	ck(2, grid.valid and grid.is_visible_in_tree() and grid.current_cell == first and c.main.get_viewport().gui_get_focus_owner() == grid)
+	_key(KEY_LEFT)
+	_key(KEY_UP)
+	var moved: bool = grid.current_cell != first and grid.current_cell == Vector2i(1, 1) and not c.main._dialogue.is_playing() and not GameState.event_started(&"E1")
 	_key(KEY_ENTER)
-	ck(3, moved and c.main._dialogue.is_playing())
+	ck(3, moved and c.main._dialogue.is_playing() and c.main._dialogue.get_current_key() == "T101" and GameState.event_started(&"E1"))
 	await _fresh()
 	var ineligible: bool = await _ineligible_cases()
 	await _go(&"point1")

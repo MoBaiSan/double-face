@@ -31,6 +31,17 @@ var _dialogue_inputs: Array[Control] = []
 var dialogue_factory: Callable
 var assembly_ready: bool = false
 var last_error: String = ""
+var _opening_serial: int = 0
+var _opening_token: int = -1
+var _opening_run: int = -1
+var _opening_pending: bool = false
+var _opening_queued: bool = false
+var _opening_handed: bool = false
+var _event_seen: Array[String] = []
+var _departure_phase: StringName = &"NONE"
+var _departure_run: int = -1
+var _departure_seen: Array[String] = []
+var _departure_keys: Array = []
 
 func configure(host: Control) -> bool:
 	if main != null:
@@ -60,7 +71,7 @@ func configure(host: Control) -> bool:
 	dialogue.sequence_finished.connect(_on_sequence_finished)
 	dialogue.stage_started.connect(_on_stage_started)
 	dialogue.stage_finished.connect(_on_stage_finished)
-	dialogue.bind_s0(main.get_node("Pages/ScenePage"), finish_s0)
+	dialogue.line_started.connect(_on_story_line)
 	if not map.bind_progress(points):
 		last_error = "序章地图缺少T157"
 		return _abort_configuration(saved, points)
@@ -76,9 +87,9 @@ func configure(host: Control) -> bool:
 	add_child(recovery)
 	recovery.configure(self)
 	_setup_safehouse()
+	dialogue.bind_s0(safe_room, finish_s0)
 	assembly_ready = true
 	_present(GameState.state)
-	_play_event(&"E1", range(101, 107))
 	# 仅新流程成功提交后恢复；正常启动已开启处理，不重复切换。
 	if not GameState.is_processing():
 		GameState.set_process(true)
@@ -168,6 +179,7 @@ func _play_event(id: StringName, numbers: Array) -> bool:
 	var previous_skip: bool = dialogue.skip_allowed
 	if not GameState.record_event(id):
 		return false
+	_event_seen.clear()
 	_sequence_event = id
 	_sequence_run = GameState.run_id
 	if id == &"E1":
@@ -180,23 +192,151 @@ func _play_event(id: StringName, numbers: Array) -> bool:
 		return false
 	return true
 
+func _on_story_line(id: String) -> void:
+	if is_instance_valid(safe_room):
+		safe_room._reading_focus = true
+		safe_room.grid.release_focus()
+	if _sequence_event != &"":
+		_event_seen.append(id)
+	if _departure_phase in [&"INTRO", &"ENTRY_TEXT"]:
+		_departure_seen.append(id)
+
 func _on_sequence_finished(skipped: bool) -> void:
 	var id: StringName = _sequence_event
 	_sequence_event = &""
-	if id == &"" or skipped or not GameState.record_event(id, true, _sequence_run):
+	if id == &"":
+		_finish_departure_intro(skipped)
+		return
+	if skipped or dialogue.is_playing() or _event_seen != dialogue._keys or not GameState.record_event(id, true, _sequence_run):
 		return
 	match id:
-		&"E1": content.present(GameState.state)
+		&"E1":
+			# 本轮分发只登记；旧结束通知不能结算尚未启动的READING。
+			if _opening_run == _sequence_run and _opening_token >= 0:
+				_opening_pending = true
+				_queue_reading_bridge()
 		&"E5":
 			s1_finished.emit()
-			request_page(&"MapPage")
-			dialogue.skip_allowed = false
-			if not dialogue.play_seq(["T130", "T131"]):
-				last_error = dialogue.last_error
-				return
+			if _departure_run == GameState.run_id and _departure_phase == &"E5":
+				_departure_phase = &"ENTRY_TEXT"
+				_departure_keys = ["T130", "T131"]
+				_departure_seen.clear()
+				request_page(&"MapPage")
+				dialogue.skip_allowed = false
+				if not dialogue.play_seq(_departure_keys):
+					last_error = dialogue.last_error
 		&"E9":
 			_pending_checkpoint_run = _sequence_run
 			_retry_checkpoint()
+
+func request_opening(session: int) -> bool:
+	if session != GameState.run_id or GameState.presenter != _present or GameState.state != GameState.State.S0 or GameState.event_done(&"E4") or not safe_room._owns_session() or not safe_room.is_visible_in_tree() or safe_room.busy or room_exit.pending or dialogue.is_playing():
+		return false
+	if _opening_run != session:
+		_opening_token = -1
+		_opening_run = session
+		_opening_pending = false
+		_opening_queued = false
+		_opening_handed = false
+	if _opening_handed:
+		return false
+	if GameState.event_done(&"E1"):
+		if not _opening_pending:
+			return false
+		_queue_reading_bridge()
+		return true
+	if _opening_token >= 0 or GameState.event_started(&"E1"):
+		return false
+	var ids: Array = ["T101", "T102", "T103", "T104", "T105", "T106", "T112", "T113", "T114", "T116", "T117", "T118", "T121"]
+	var reason: String = dialogue.validate_sequence(ids)
+	if not reason.is_empty():
+		dialogue.last_error = reason
+		return false
+	_opening_serial += 1
+	_opening_token = _opening_serial
+	if not _play_event(&"E1", range(101, 107)):
+		_opening_token = -1
+		return false
+	return true
+
+func _queue_reading_bridge() -> void:
+	if _opening_queued or not _opening_pending:
+		return
+	_opening_queued = true
+	_start_reading_after_e1.call_deferred(_opening_run, _opening_token)
+
+func _start_reading_after_e1(session: int, token: int) -> void:
+	# 旧回调必须在写任何请求标志之前返回，不能清掉新会话的token。
+	if session != GameState.run_id or session != _opening_run or token != _opening_token or not _opening_pending or _opening_handed or GameState.presenter != _present:
+		return
+	_opening_queued = false
+	if GameState.state != GameState.State.S0 or not GameState.event_done(&"E1") or GameState.event_done(&"E4") or not is_instance_valid(dialogue) or dialogue.is_playing() or not is_instance_valid(safe_room):
+		return
+	if safe_room.flow != self or safe_room.player != dialogue or safe_room.captured_run != session or dialogue._s0 == null or not dialogue._s0.binding_valid(session):
+		return
+	_opening_pending = false
+	_opening_handed = true
+	dialogue.start_s0_from_speaker(session)
+
+func _departure_target() -> StringName:
+	if not map._playable or map.get_current_node_id() != map._start_id or map.get_step_count() != 0 or GameState.vital_now < GameState.get_knob("step_cost") or GameState.vital_now <= 0:
+		return &""
+	var target: StringName = map._find_direction_target(Vector2.DOWN)
+	if target == &"" or not map._points.has(target) or not map._revealed.has(target) or map._visited.has(target) or not map._is_adjacent(map._start_id, target):
+		return &""
+	return target
+
+func request_departure(session: int) -> bool:
+	if session != GameState.run_id or GameState.presenter != _present or GameState.state != GameState.State.S1 or not GameState.event_done(&"E4") or not safe_room.is_visible_in_tree() or not safe_room._owns_session() or dialogue.is_playing():
+		return false
+	if _departure_run != session:
+		_departure_run = session
+		_departure_phase = &"NONE"
+	if _departure_phase == &"READY":
+		return _commit_departure_step(session)
+	if _departure_phase != &"NONE":
+		return false
+	var keys: Array = ["T195", "T122", "T123", "T124", "T125", "T126", "T127", "T128", "T129", "T130", "T131"]
+	var reason: String = dialogue.validate_sequence(keys)
+	if not reason.is_empty() or _departure_target() == &"":
+		last_error = reason if not reason.is_empty() else "出发目标不可用"
+		return false
+	if not request_page(&"MapPage"):
+		return false
+	_departure_phase = &"INTRO"
+	_departure_keys = ["T195"]
+	_departure_seen.clear()
+	dialogue.skip_allowed = false
+	if not dialogue.play_seq(_departure_keys):
+		_departure_phase = &"NONE"
+		request_page(&"ScenePage")
+		return false
+	return true
+
+func _finish_departure_intro(skipped: bool) -> void:
+	if _departure_run != GameState.run_id or GameState.presenter != _present or GameState.state != GameState.State.S1 or _departure_phase not in [&"INTRO", &"ENTRY_TEXT"]:
+		return
+	if skipped or dialogue.is_playing() or _departure_seen != _departure_keys or dialogue._keys != _departure_keys:
+		return
+	if _departure_phase == &"INTRO":
+		_departure_phase = &"E5"
+		_play_event(&"E5", range(122, 130))
+	else:
+		_departure_phase = &"READY"
+		_commit_departure_step(_departure_run)
+
+func _commit_departure_step(session: int) -> bool:
+	if session != GameState.run_id or GameState.presenter != _present or _departure_phase != &"READY" or GameState.state != GameState.State.S1 or not GameState.event_done(&"E5"):
+		return false
+	var target: StringName = _departure_target()
+	if target == &"" or not request_page(&"MapPage") or not GameState.request_transition(&"first_step", session):
+		return false
+	if not map.try_move_to(target):
+		last_error = "首步提交失败"
+		return false
+	_departure_phase = &"COMMITTED"
+	first_map_move.emit()
+	return true
 
 ## 保存失败留在 S4；每秒重试同一任务，成功后才进入 S6。
 func _process(delta: float) -> void:
@@ -238,7 +378,6 @@ func _on_state_changed(_from: int, target: int, reason: StringName, session: int
 	if GameState.presenter != _present:
 		return
 	match target:
-		GameState.State.S1: _play_event(&"E5", range(122, 130))
 		GameState.State.S2B:
 			GameState.record_event(&"E15", true, session)
 			battle_entered.emit()
@@ -259,26 +398,6 @@ func _input(event: InputEvent) -> void:
 		return
 	if GameState.presenter != _present or _route_dialogue_input(event):
 		return
-	if GameState.state != GameState.State.S1 or not GameState.event_done(&"E5"):
-		return
-	if not map.is_visible_in_tree():
-		return
-	var target: StringName = &""
-	if event is InputEventKey and event.pressed and not event.echo:
-		var direction: Vector2 = {KEY_LEFT: Vector2.LEFT, KEY_RIGHT: Vector2.RIGHT,
-			KEY_UP: Vector2.UP, KEY_DOWN: Vector2.DOWN}.get(event.keycode, Vector2.ZERO)
-		if direction == Vector2.ZERO or not map.select_direction(direction):
-			return
-		target = map._pending_id
-		map._pending_id = &""
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and map.is_visible_in_tree():
-		target = map._hover_candidate_at(map.get_global_transform_with_canvas().affine_inverse() * event.position)
-	if target == &"":
-		return
-	get_viewport().set_input_as_handled()
-	if GameState.request_transition(&"first_step") and map.try_move_to(target):
-		first_map_move.emit()
-
 ## 文字仍走既有播放器；翻页事件留给按钮 GUI 与 Main 的同一入口。
 func _bind_dialogue_input(player: Control) -> void:
 	_dialogue_inputs.push_front(player)
@@ -380,4 +499,8 @@ func finish_safehouse(id: StringName, session: int) -> bool:
 	if id == &"E14":
 		prologue_finished.emit()
 	return true
+
+
+func can_finish_safehouse(session: int) -> bool:
+	return epilogue != null and epilogue.can_finish(session)
 

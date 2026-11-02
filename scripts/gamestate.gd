@@ -391,7 +391,7 @@ func _event_allowed(id: StringName) -> bool:
 		&"E10": return _state == State.S5
 		&"E11": return _state == State.S2
 		&"E12", &"E13": return _state == State.S6
-		&"E14": return _state == State.S6 and event_done(&"E12")
+		&"E14": return _state == State.S6 and presenter.is_valid() and presenter.get_object().has_method("can_finish_safehouse") and presenter.get_object().can_finish_safehouse(run_id)
 		&"E15", &"E16", &"E17": return _state == State.S2B
 	return false
 

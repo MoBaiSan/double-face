@@ -276,7 +276,7 @@ func _test_battle_freeze_boundaries() -> void:
 	_check(unfrozen_drains, "unfreeze_on_exit_battle frozen=false drains=true")
 	context.enter_domain(self, GameState.State.S0)
 	GameState.record_event(&"E1", true)
-	$Pages/ScenePage/FlowContent.present(GameState.state)
+	context.present_component_fixture(self)
 	show_page(&"ScenePage")
 
 func _test_hidden_nav_does_not_consume() -> void:

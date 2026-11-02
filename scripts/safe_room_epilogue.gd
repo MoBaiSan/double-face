@@ -39,6 +39,7 @@ func reset_session(session: int) -> void:
 	doorway.reset_visual()
 	room.visual.show()
 	room.get_node("Objects").show()
+	room.grid.show()
 
 func begin_exit(session: int, done: Callable) -> void:
 	if not _valid(session) or phase != Phase.IDLE or not service.is_waiting_before_save(session):
@@ -48,13 +49,15 @@ func begin_exit(session: int, done: Callable) -> void:
 	phase = Phase.READING
 	last_error = OK
 	room.visual.hide()
+	room.grid.hide()
+	room.get_node("Objects").hide()
 	doorway.show_entry()
 	flow.request_page(&"ScenePage")
 	if not room.request_room_sequence(&"exit", ["T193"]):
 		_cancel(session)
 
 func can_read(session: int) -> bool:
-	return _valid(session) and phase == Phase.READING and doorway.is_visible_in_tree() and doorway.figure.visible and not room.visual.visible and GameState.event_done(&"E12")
+	return _valid(session) and phase == Phase.READING and doorway.is_visible_in_tree() and doorway.figure.visible and not room.visual.visible
 
 func _line_finished(session: int, completed: bool) -> void:
 	if not _valid(session) or phase != Phase.READING:
@@ -77,6 +80,8 @@ func _cancel(session: int) -> void:
 	line_completed = false
 	doorway.reset_visual()
 	room.visual.show()
+	room.grid.show()
+	room.get_node("Objects").show()
 	var done: Callable = _done
 	_done = Callable()
 	if done.is_valid():

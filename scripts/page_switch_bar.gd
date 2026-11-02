@@ -113,25 +113,7 @@ func _click_button(button: Button) -> void:
 
 ## U-03b：从正式开场出发，真实输入覆盖玩家报告的入口与停滞。
 func run_story_input_test(c: RefCounted, check: Callable) -> void:
-	var page: Control = c.main.get_node("Pages/ScenePage")
-	_finish_user_text(c.main._dialogue)
-	var speaker: Control = page.get_node("TestOptions/OptionTwo")
-	print("[U-03b] speaker text=%s visible=%s rect=%s" % [speaker.get_node("Text").text, speaker.is_visible_in_tree(), speaker.get_global_rect()])
-	check.call(61, speaker.is_visible_in_tree() and speaker.get_node("Text").text == "旧音响", "旧音响入口有真实名称")
-	_click_at(speaker.get_global_rect().get_center())
-	check.call(62, c.main._dialogue.get_current_key() == "T112", "旧音响中心点击触发旁白T112")
-	for index: int in range(4):
-		_finish_user_text(c.main._dialogue)
-	check.call(63, c.main._dialogue.get_story_phase() == &"DONE" and GameState.state == GameState.State.S1 and c.main._dialogue.get_current_key() == "T122", "真实阅读串完R2_R3_R4进入S1")
-	_finish_user_text(c.main._dialogue)
-	_log_map_input(c, "departure_finished")
-	_click_map_point(c.map, &"c1")
-	var entered: bool = GameState.state == GameState.State.S2 and c.map.get_current_node_id() == &"c1"
-	check.call(64, entered and c.map.get_step_count() == 1 and GameState.vital_now == 99.0, "出发文字结束后真实鼠标首步到c1")
-	if not entered:
-		_push_key(KEY_DOWN)
-	_log_map_input(c, "first_step")
-	_test_map_continuation(c, check)
+	await preload("res://scripts/sp11_selftest.gd").run_story_input_test(c, check)
 
 func _test_map_continuation(c: RefCounted, check: Callable) -> void:
 	_click_map_point(c.map, &"point1")

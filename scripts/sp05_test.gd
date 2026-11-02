@@ -233,7 +233,7 @@ func _base_configuration_cases() -> void:
 	rejected_mains.append(failed)
 	var healthy: Control = load("res://scenes/Main.tscn").instantiate()
 	get_tree().root.add_child(healthy)
-	var recovered: bool = loaded and loader_still_stopped and failed_still_stopped and not healthy.startup_blocked and healthy._flow.assembly_ready and GameState.event_started(&"E1") and GameState.is_processing()
+	var recovered: bool = loaded and loader_still_stopped and failed_still_stopped and not healthy.startup_blocked and healthy._flow.assembly_ready and not GameState.event_started(&"E1") and healthy._flow.safe_room.grid.valid and GameState.is_processing()
 	var auto_drain: bool = await _recovered_session_auto_drain(healthy)
 	var old_flows_blocked: bool = true
 	for rejected_main: Control in rejected_mains:
@@ -256,20 +256,8 @@ func _recovered_session_auto_drain(main: Control) -> bool:
 	var player: Control = main._dialogue
 	var committed: bool = GameState.is_processing() and GameState.state == GameState.State.S0
 	await main._wait_for_layout()
-	context.finish_sequence(player) # E1真实完成。
-	context.click(main.get_node("Pages/ScenePage/TestOptions/OptionTwo"))
-	for stage: int in range(4): # READING、R2、R3、R4各由真实完成推进。
-		context.finish_sequence(player)
-	context.finish_sequence(player) # E5完成，真实呈现地图。
-	context.finish_sequence(player) # T130/T131结束，让首步输入进入原流程。
-	await main._wait_for_layout()
-	var target: Vector2 = context.map.get_global_transform_with_canvas() * context.map._point_position(&"c1")
-	for pressed: bool in [true, false]:
-		var event := InputEventMouseButton.new()
-		event.position = target
-		event.button_index = MOUSE_BUTTON_LEFT
-		event.pressed = pressed
-		main.get_viewport().push_input(event, true)
+	await context.opening_to_s1()
+	context.departure_to_s2()
 	var entered: bool = GameState.state == GameState.State.S2 and main._current_page == &"MapPage" and context.map.get_current_node_id() == &"c1" and context.map.get_step_count() == 1
 	entered = entered and GameState.event_done(&"E1") and GameState.event_done(&"E4") and GameState.event_done(&"E5")
 	var running: bool = GameState.is_processing() and not GameState.is_frozen()

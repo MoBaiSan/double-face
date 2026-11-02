@@ -173,7 +173,7 @@ func _battle() -> void:
 
 func _story() -> void:
 	await h.fresh(root, S.S0)
-	h.opening()
+	await h.opening()
 	var finished: bool = GameState.state == S.S2 and h.c.main._dialogue.get_story_phase() == &"DONE"
 	var seen: Array = []
 	h.c.main._dialogue.line_started.connect(func(key: String): seen.append(key))
@@ -181,7 +181,7 @@ func _story() -> void:
 	h.ready_panel()
 	await h.retry_mouse()
 	h.c.flow.request_page(&"ScenePage")
-	h.c.main.get_node("Pages/ScenePage/PageNav").reading_requested.emit(h.c.main.get_node("Pages/ScenePage/TestOptions/OptionTwo"))
+	h.c.flow.safe_room.request_object("Speaker")
 	ck(30, finished and h.c.main._dialogue.get_story_phase() == &"DONE" and seen.is_empty() and not GameState.event_started(&"E1"), "retry_does_not_replay_r1_r4")
 	h.c.flow.request_page(&"MapPage")
 	h.c.key(KEY_DOWN)

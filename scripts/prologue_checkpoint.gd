@@ -76,3 +76,15 @@ func read_saved() -> Dictionary:
 		last_error = ERR_INVALID_DATA
 		return {}
 	return document.data
+
+## 缺失/坏档返回未知，不把未知伪装成未上药分支。
+func read_safehouse_branch() -> Dictionary:
+	var document: Dictionary = read_saved()
+	if document.get("version") != 1 or document.get("checkpoint") != "safehouse_exit":
+		return {}
+	var progress: Variant = document.get("progress")
+	if not progress is Dictionary or progress.get("safehouse_reached") != true or progress.get("safehouse_exit") != true:
+		return {}
+	if not progress.get("r13_done") is bool or not progress.get("trust_read") is bool:
+		return {}
+	return {"r13_done": progress.r13_done, "trust_read": progress.trust_read}

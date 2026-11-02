@@ -34,15 +34,14 @@ func configure() -> void:
 
 func present(target: int) -> void:
 	var page: Control = get_parent()
-	page.get_node("Illustration").visible = target == GameState.State.S0
-	page.get_node("TestOptions").visible = target == GameState.State.S0
-	$Departure.visible = target == GameState.State.S1
+	page.get_node("Illustration").hide()
+	page.get_node("TestOptions").hide()
 	$TaskComplete.visible = target == GameState.State.S4
 	_sync_checkpoint_status(target)
-	$Safehouse.visible = target == GameState.State.S6
-	if target == GameState.State.S6:
+	$Safehouse.visible = target in [GameState.State.S0, GameState.State.S1, GameState.State.S6]
+	if $Safehouse.visible:
 		$Safehouse.enter_session()
-	var enabled: bool = target == GameState.State.S0 and GameState.event_done(&"E1")
+	var enabled: bool = false
 	page.get_node("PageNav").set_process(enabled)
 	page.get_node("PageNav").set_process_input(enabled)
 
@@ -59,7 +58,7 @@ func request_trust() -> bool:
 	return true
 
 func request_door() -> bool:
-	if GameState.state != GameState.State.S6 or not GameState.event_done(&"E12"):
+	if GameState.state not in [GameState.State.S0, GameState.State.S1, GameState.State.S6]:
 		return false
 	door_requested.emit()
 	return true

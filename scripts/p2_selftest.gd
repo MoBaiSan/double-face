@@ -15,9 +15,9 @@ static func component_callbacks(host: Control, check: Callable) -> void:
 	var map: Control = host.get_node("Pages/MapPage/MapArea/CursorContainer/MapGrid")
 	var battle: Control = host.get_node("Pages/BattlePage")
 	var before: Array = [nav.reading_requested.get_connections(), map._interactions.request_investigation, map._interactions.investigated.get_connections()]
-	var production: bool = nav.reading_requested.is_connected(host._dialogue._s0._on_read_requested) and before[1].is_valid() and map._interactions.investigated.is_connected(battle._on_investigated)
+	var production: bool = host._dialogue._s0._page == host._flow.safe_room and nav.reading_requested.get_connections().is_empty() and before[1].is_valid() and map._interactions.investigated.is_connected(battle._on_investigated)
 	var scope = CONTEXT.component_scope(host)
-	var replaced: bool = nav.reading_requested.is_connected(host._dialogue._s0._placeholder) and not map._interactions.request_investigation.is_valid() and not map._interactions.investigated.is_connected(battle._on_investigated)
+	var replaced: bool = nav.reading_requested.is_connected(Callable(host.get_node("Pages/ScenePage"), "_begin_reading")) and not map._interactions.request_investigation.is_valid() and not map._interactions.investigated.is_connected(battle._on_investigated)
 	var restored: bool = scope.restore()
 	var after: Array = [nav.reading_requested.get_connections(), map._interactions.request_investigation, map._interactions.investigated.get_connections()]
 	check.call(production and replaced and restored and before == after, "restore_restores_component_callbacks production=%s replaced=%s restore=%s equal=%s" % [production, replaced, restored, before == after])
