@@ -177,6 +177,8 @@ func _sofa() -> void:
 	ck(7, select_only and h.ids() == h.room.TRUST_IDS and state.event_done(&"E13") and not state.event_done(&"E12") and not h.room.interaction("Sofa").read, "归来沙发首遍12句")
 	h.lines.clear()
 	h.click("Sofa")
+	var menu: bool = h.room.options_open and not h.player.is_playing()
+	h.choose_option("Medical")
 	var medical: bool = h.room.medical.visible and h.player.get_current_key() == "T176"
 	h.c.click(h.room.medical.frame)
 	medical = medical and not h.room.medical.visible and h.player.get_current_key() == "T176"
@@ -186,10 +188,12 @@ func _sofa() -> void:
 	h.player.finish_text()
 	medical = medical and h.player.get_visible_text() == H.T177 and h.player._speaker.text == "斑"
 	h.key(KEY_ENTER)
-	ck(8, medical and h.ids() == ["T176","T177"] and h.room.interaction("Sofa").read and not state.event_done(&"E12"), "第二遍原医疗原文不提前确认")
-	h.click("Sofa")
-	h.click("Sofa")
-	h.click("Sofa")
+	ck(8, menu and medical and h.ids() == ["T176","T177"] and h.room.interaction("Sofa").read and not state.event_done(&"E12"), "第二遍原医疗原文不提前确认")
+	for n: int in range(3):
+		h.click("Sofa")
+		h.choose_option("Medical")
+		if h.room.options_open:
+			h.key(KEY_ESCAPE)
 	ck(9, h.c.event_count(&"E12") == 1 and h.c.event_count(&"E13") == 1 and h.c.event_count(&"E13",false) == 1 and h.ids() == ["T176","T177"], "第三确认一次后续不重复")
 	await fresh()
 	h.click("Sofa")
@@ -268,7 +272,16 @@ func _background() -> void:
 	art.artwork = null
 	ck(15, swap and not art.get_node("Artwork").visible and art.get_node("Placeholder").visible and h.room.grid.size == before, "一属性换图清空恢复输入不变")
 	var denied: bool = not h.room.request_object("Scar") and not h.room.request_object("Ban") and not h.room.request_room_sequence(&"detail",["T190"])
-	ck(16, denied and not h.room.has_node("Objects/Scar") and not h.room.has_node("Objects/Ban") and not h.room.grid.objects.has("Scar") and h.player.get_lines().has("T190") and h.lines.is_empty(), "撤入口不删原文")
+	var original_negative: bool = denied and not h.room.has_node("Objects/Scar") and not h.room.has_node("Objects/Ban") and not h.room.grid.objects.has("Scar") and h.player.get_lines().has("T190") and h.lines.is_empty()
+	await fresh(S.S1)
+	var s1_negative: bool = not h.room.request_object("Sofa") and not h.room.request_room_sequence(&"detail",["T190"]) and h.lines.is_empty()
+	await fresh()
+	h.read_trust()
+	h.lines.clear()
+	h.click("Sofa")
+	h.choose_option("ScarDetail")
+	h.finish_reading()
+	ck(16, original_negative and s1_negative and h.ids() == ["T190"] and not state.event_done(&"E12") and h.room.grid.objects.keys() == ["Sofa","Speaker","Door"] and not h.room.has_node("Objects/Scar") and not h.room.has_node("Objects/Ban"), "撤图上入口仅S6沙发选项接T190")
 
 func _departure() -> void:
 	await fresh(S.S0)

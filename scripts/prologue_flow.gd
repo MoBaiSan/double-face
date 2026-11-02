@@ -30,6 +30,7 @@ var _battle_id: int = 0
 var _dialogue_inputs: Array[Control] = []
 var dialogue_factory: Callable
 var assembly_ready: bool = false
+var _restored_branch_run: int = -1
 var last_error: String = ""
 var _opening_serial: int = 0
 var _opening_token: int = -1
@@ -504,3 +505,30 @@ func finish_safehouse(id: StringName, session: int) -> bool:
 func can_finish_safehouse(session: int) -> bool:
 	return epilogue != null and epilogue.can_finish(session)
 
+
+## 只导入已经装配的干净 S6 的两项旧档事实；不是整章继续游戏入口。
+func restore_safehouse_branch(session: int) -> bool:
+	if not _can_restore_safehouse_branch(session):
+		return false
+	var branch: Dictionary = checkpoint.read_safehouse_branch()
+	if branch.is_empty() or not _can_restore_safehouse_branch(session):
+		return false
+	if branch.trust_read and not GameState.record_event(&"E13", true, session):
+		return false
+	if session != GameState.run_id or GameState.presenter != _present:
+		return false
+	if branch.r13_done and not GameState.record_event(&"E12", true, session):
+		return false
+	if not safe_room.sync_restored_sofa_progress(session):
+		return false
+	_restored_branch_run = session
+	return true
+
+func _can_restore_safehouse_branch(session: int) -> bool:
+	if not assembly_ready or session != GameState.run_id or session == _restored_branch_run or GameState.presenter != _present:
+		return false
+	if GameState.state != GameState.State.S6 or not is_instance_valid(safe_room) or safe_room.flow != self or safe_room.captured_run != session:
+		return false
+	if not safe_room.is_visible_in_tree() or not safe_room._can_request() or safe_room.options_open or safe_room.medical.is_visible_in_tree():
+		return false
+	return not GameState.event_started(&"E13") and not GameState.event_done(&"E12") and not GameState.event_done(&"E14") and not safe_room.interaction("Sofa").read

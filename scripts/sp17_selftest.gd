@@ -55,6 +55,8 @@ func _keyboard() -> void:
 	ck(34, host.get_viewport().gui_get_focus_owner() == h.room.grid and h.room.grid.current_cell == Vector2i(2, 3) and h.c.map.get_current_node_id() == position and h.c.map.get_step_count() == step, "arrow_keys_only_focus_objects")
 	h.key(KEY_LEFT)
 	h.key(KEY_ENTER)
+	var opened: bool = h.room.options_open and not h.player.is_playing()
+	h.key(KEY_ENTER)
 	var reading: bool = h.player.get_current_key() == "T176" and h.room.medical.visible
 	h.key(KEY_ENTER)
 	reading = reading and not h.room.medical.visible and h.player.get_current_key() == "T176"
@@ -63,7 +65,8 @@ func _keyboard() -> void:
 	var before: bool = not GameState.event_done(&"E12") and h.room.interaction("Sofa").read
 	await host.get_tree().process_frame
 	h.key(KEY_ENTER)
-	ck(7, reading and before and GameState.event_done(&"E12") and h.c.event_count(&"E12") == 1, "keyboard_keeps_read_then_confirm")
+	h.key(KEY_ENTER)
+	ck(7, opened and reading and before and GameState.event_done(&"E12") and h.c.event_count(&"E12") == 1, "keyboard_keeps_read_then_confirm")
 
 func _dialogue() -> void:
 	await h.fresh(host)
@@ -77,9 +80,11 @@ func _dialogue() -> void:
 	ck(11, h.player._speaker.text == "斑" and h.player.get_visible_text() == H.T177 and data.T177.text == H.T177 and h.player._body.visible_characters == -1, "t177_literal_visible")
 	h.finish_reading()
 	ck(9, h.ids() == ["T176", "T177"] and h.room.interaction("Sofa").read and not GameState.event_done(&"E12"), "dressing_sequence_exact_order")
-	h.click("Sofa")
-	h.click("Sofa")
-	h.click("Sofa")
+	for n: int in range(3):
+		h.click("Sofa")
+		h.choose_option("Medical")
+		if h.room.options_open:
+			h.key(KEY_ESCAPE)
 	ck(14, h.c.event_count(&"E12") == 1 and h.ids() == ["T176", "T177"], "sofa_completion_only_once")
 
 func _cancel() -> void:
@@ -91,6 +96,7 @@ func _cancel() -> void:
 	h.player._finish(true)
 	var skipped: bool = not h.room.interaction("Sofa").read and not h.room.busy
 	h.click("Sofa")
+	h.choose_option("Medical")
 	h.room._sequence_run -= 1
 	h.finish_reading()
 	ck(13, skipped and not h.room.interaction("Sofa").read and not GameState.event_done(&"E12") and h.c.flow.checkpoint.writes == 0, "unfinished_read_cannot_unlock_door")
@@ -108,6 +114,7 @@ func _detail() -> void:
 	h.read_trust()
 	h.lines.clear()
 	h.click("Sofa")
+	h.choose_option("Medical")
 	h.finish_reading()
 	var item: Control = h.room.interaction("Sofa")
 	ck(18, item.get_script() == preload("res://scripts/interactable.gd") and item.read and item.has_checkmark() and item.get_read_shade().a > 0.0, "shared_read_feedback_preserved")
@@ -120,6 +127,9 @@ func _detail() -> void:
 
 func _allowlist() -> void:
 	await h.fresh(host)
+	h.read_trust()
+	h.lines.clear()
+	var before: Dictionary = GameState.capture_session()
 	var rejected: bool = true
 	var ids: Array = h.player.get_lines().keys()
 	ids.append("unknown_sp17")
@@ -130,16 +140,30 @@ func _allowlist() -> void:
 		rejected = not h.room.request_room_sequence(&"sofa", ["T176", id, "T177"]) and rejected
 	for sample: Array in [["T176"], ["T177", "T176"], ["T190", "T190"], ["T176", "T177", "T191"]]:
 		rejected = not h.room.request_room_sequence(&"sofa", sample) and rejected
-	rejected = not h.room.request_room_sequence(&"detail", ["T176"]) and rejected
+	for sample: Array in [[], ["T190", "T190"], ["T190", "T191"], ["T176"]]:
+		rejected = not h.room.request_room_sequence(&"detail", sample) and rejected
 	rejected = not h.room.request_room_sequence(&"unknown", ["T190"]) and rejected
 	await host.get_tree().process_frame
-	rejected = rejected and h.lines.is_empty() and not h.player.is_playing() and not h.room.busy
-	var unchanged: bool = not h.room.request_object("Scar") and not h.room.request_room_sequence(&"detail", ["T190"]) and h.lines.is_empty()
+	rejected = rejected and h.lines.is_empty() and not h.player.is_playing() and not h.room.busy and GameState.capture_session() == before
+	var unchanged: bool = not h.room.request_object("Scar") and h.lines.is_empty() and GameState.capture_session() == before
+	var legal: bool = h.room.request_room_sequence(&"detail", ["T190"])
+	h.finish_reading()
+	legal = legal and h.ids() == ["T190"] and not h.room.interaction("Sofa").read and GameState.capture_session() == before
+	h.lines.clear()
+	h.click("Sofa")
+	h.choose_option("ScarDetail")
+	h.finish_reading()
+	legal = legal and h.ids() == ["T190"] and not h.room.interaction("Sofa").read and GameState.capture_session() == before
 	var allowed_text: bool = true
 	for node: Node in h.descendants(h.room):
 		if node is Label or node is Button:
-			allowed_text = allowed_text and node.text in ["", "安全屋"]
-	ck(17, rejected and unchanged and allowed_text and h.player.get_lines().has("T191") and h.player.get_lines().has("T190"), "narration_matches_allowlist")
+			if node == h.room.get_node("SofaOptions/Choices/Medical/Text"):
+				allowed_text = allowed_text and node.text == "上药"
+			elif node == h.room.get_node("SofaOptions/Choices/ScarDetail/Text"):
+				allowed_text = allowed_text and node.text == "看斑的旧伤"
+			else:
+				allowed_text = allowed_text and node.text in ["", "安全屋"]
+	ck(17, rejected and unchanged and legal and allowed_text and h.player.get_lines().has("T191") and h.player.get_lines().has("T190"), "narration_matches_exact_sequences_and_sofa_menu")
 
 func _door() -> void:
 	await h.fresh(host)
@@ -288,6 +312,7 @@ func _busy() -> void:
 	var held: bool = h.player.get_current_key() == "T178" and h.ids() == ["T178"] and h.exit_service.accepted == 0
 	h.finish_reading()
 	h.click("Sofa")
+	h.choose_option("Medical")
 	ck(36, held and h.player.get_current_key() == "T176" and h.ids() == h.room.TRUST_IDS + ["T176"], "busy_reader_blocks_room_reentry")
 
 func _recovery() -> void:
@@ -299,9 +324,11 @@ func _recovery() -> void:
 		var data: Dictionary = h.player._lines[key].duplicate(true)
 		h.player._lines.erase(key)
 		h.click("Sofa")
+		h.choose_option("Medical")
 		recovered = recovered and not h.room.busy and not h.player.is_playing() and not h.room.interaction("Sofa").read and not GameState.event_done(&"E12")
 		h.player._lines[key] = data
 		h.click("Sofa")
+		h.choose_option("Medical")
 		h.finish_reading()
 		recovered = recovered and h.ids() == ["T176", "T177"] and h.room.interaction("Sofa").read
 	ck(38, recovered, "playback_failure_is_recoverable")

@@ -130,10 +130,30 @@ func clean_words(texts: Array, global_only: bool = false) -> bool:
 
 func permitted_ui() -> bool:
 	var allowed: Array[String] = ["", "安全屋", "旧沙发", "旧音响", "门", "还有没听完的内容。", "还有没看过的地方。", "自动保存失败，正在重试。", "内容加载失败，请重试。"]
-	for text: String in text_fields(room):
-		if text not in allowed:
-			print("[SP-19] unexpected_ui=%s" % text)
+	var menu_texts: Dictionary = {
+		"SofaOptions/Choices/Medical/Text": "上药",
+		"SofaOptions/Choices/ScarDetail/Text": "看斑的旧伤",
+	}
+	var menu_labels: Array[Node] = []
+	for path: String in menu_texts:
+		var label: Node = room.get_node_or_null(path)
+		if not label is Label or label.text != menu_texts[path]:
+			print("[SP-19] unexpected_menu_label=%s" % path)
 			return false
+		menu_labels.append(label)
+	for node: Node in [room] + descendants(room):
+		var texts: Array[String] = []
+		if node is Label or node is Button or node is RichTextLabel:
+			if node not in menu_labels:
+				texts.append(node.text)
+		if node is Control:
+			texts.append(node.tooltip_text)
+			texts.append(node.accessibility_name)
+			texts.append(node.accessibility_description)
+		for text: String in texts:
+			if text not in allowed:
+				print("[SP-19] unexpected_ui=%s" % text)
+				return false
 	return true
 
 func no_extra_nodes() -> bool:

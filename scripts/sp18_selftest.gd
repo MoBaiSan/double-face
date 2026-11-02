@@ -60,8 +60,10 @@ func _layout() -> void:
 	var words: Array[String] = []
 	for node: Node in h.descendants(h.room):
 		if node is Label or node is Button or node is RichTextLabel:
+			if node == h.room.get_node("SofaOptions/Choices/Medical/Text") or node == h.room.get_node("SofaOptions/Choices/ScarDetail/Text"):
+				continue
 			if not node.text.is_empty(): words.append(node.text)
-	ck(3, words == ["安全屋"], "room_and_popup_have_no_placeholder_words")
+	ck(3, words == ["安全屋"] and h.room.get_node("SofaOptions/Choices/Medical/Text").text == "上药" and h.room.get_node("SofaOptions/Choices/ScarDetail/Text").text == "看斑的旧伤", "room_and_popup_have_no_placeholder_words")
 	var image := Image.create(2, 2, false, Image.FORMAT_RGBA8)
 	image.fill(Color("#86724F"))
 	var texture := ImageTexture.create_from_image(image)
@@ -127,11 +129,13 @@ func _replay() -> void:
 	h.click("Sofa")
 	h.finish_reading()
 	h.click("Sofa")
+	var choices: bool = h.room.options_open and not h.player.is_playing() and h.ids() == IDS and h.room.options_nav.get_candidates().size() == 2
+	h.choose_option("Medical")
 	var again: bool = h.player.get_current_key() == "T176" and h.player.is_playing() and h.room.medical.visible
 	h.finish_reading()
-	ck(11, again and h.ids() == IDS + ["T176", "T177"] and h.room.interaction("Sofa").read, "completed_trust_can_replay_all_twelve")
+	ck(11, choices and again and h.ids() == IDS + ["T176", "T177"] and h.room.interaction("Sofa").read, "completed_trust_opens_menu_then_original_medical")
 	ck(12, h.c.event_count(&"E13") == 1 and h.c.event_count(&"E13", false) == 1 and not state.event_done(&"E12"), "replay_records_e13_once_without_r13")
-	ck(13, _clear_targets() and h.room.get_node("Objects").visible and h.room.interaction("Sofa").read and not h.room.has_node("Objects/Scar"), "replay_keeps_all_four_locations")
+	ck(13, _clear_targets() and h.room.get_node("Objects").visible and h.room.interaction("Sofa").read and not h.room.has_node("Objects/Scar"), "menu_keeps_three_locations")
 	await _fresh()
 	h.click("Sofa")
 	h.player._finish(true)
@@ -157,7 +161,18 @@ func _permissions() -> void:
 	ck(17, denied and not h.player.is_typing() and h.player.get_current_key() == "T178" and not state.event_done(&"E13"), "trust_escape_finishes_sentence_without_skipping")
 	h.finish_reading()
 	h.click("Scar")
-	ck(18, not h.player.is_playing() and not h.room.request_object("Scar") and h.player.get_lines().has("T190"), "scar_remains_separate_detail_sequence")
+	var scar_denied: bool = not h.player.is_playing() and not h.room.request_object("Scar") and h.player.get_lines().has("T190")
+	h.lines.clear()
+	var detail: bool = true
+	for n: int in range(2):
+		h.click("Sofa")
+		detail = detail and h.room.options_open and not h.player.is_playing()
+		h.choose_option("ScarDetail")
+		h.player.finish_text()
+		detail = detail and h.player.get_current_key() == "T190" and h.player.get_visible_text() == h.T190 and h.player._speaker.text == "旁白" and h.player.get_current_mode() == "read"
+		h.finish_reading()
+		detail = detail and not h.room.options_open and not h.room.interaction("Sofa").read and not state.event_done(&"E12")
+	ck(18, scar_denied and detail and h.ids() == ["T190","T190"] and h.c.event_count(&"E13") == 1, "scar_only_through_repeatable_sofa_option")
 	h.finish_reading()
 
 func _medical() -> void:
@@ -179,6 +194,7 @@ func _medical() -> void:
 	await process_frame
 	ck(22, original and h.ids() == ["T176","T177"] and h.room.interaction("Sofa").read and not h.room.busy and root.gui_get_focus_owner() == h.room.grid, "medical_close_restores_original_two_line_story")
 	h.click("Sofa")
+	h.choose_option("Medical")
 	ck(23, state.event_done(&"E12") and h.c.event_count(&"E12") == 1 and state.event_done(&"E13"), "medical_does_not_change_sofa_confirmation")
 	print("[SP-18] medical=%s" % JSON.stringify({"popup":str(rect), "picture":str(med.picture.get_global_rect()), "dialogue":str(h.player._body.get_global_rect())}))
 
@@ -222,6 +238,7 @@ func _keyboard() -> void:
 	ck(31, h.player.get_current_key() == "T178" and h.player.is_playing() and not state.event_done(&"E12"), "keyboard_ban_starts_without_sofa")
 	h.finish_reading()
 	h.click("Sofa")
+	h.choose_option("Medical")
 	h.c.main.show_page(&"MapPage")
 	var cleared: bool = not h.room.medical.visible and h.player.visible
 	h.c.main.show_page(&"ScenePage")

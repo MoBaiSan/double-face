@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/safe_room.gd" id="1_room"]
 [ext_resource type="Script" path="res://scripts/safe_room_illustration.gd" id="2_art"]
@@ -9,6 +9,11 @@
 [ext_resource type="Script" path="res://scripts/med_illustration.gd" id="5_med"]
 
 [ext_resource type="Script" path="res://scripts/safe_room_grid.gd" id="6_grid"]
+
+[ext_resource type="Script" path="res://scripts/page_nav.gd" id="7_options_nav"]
+
+[sub_resource type="StyleBoxFlat" id="OptionPaper"]
+bg_color = Color(0.94902, 0.921569, 0.839216, 1)
 
 [sub_resource type="StyleBoxFlat" id="Paper"]
 bg_color = Color(0.94902, 0.921569, 0.839216, 1)
@@ -123,3 +128,74 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 script = ExtResource("5_med")
+
+[node name="SofaOptions" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Choices" type="VBoxContainer" parent="SofaOptions"]
+layout_mode = 1
+anchor_left = 0.25
+anchor_top = 0.18
+anchor_right = 0.70
+anchor_bottom = 0.18
+offset_bottom = 130.0
+mouse_filter = 2
+theme_override_constants/separation = 18
+
+[node name="Medical" type="Panel" parent="SofaOptions/Choices" groups=["selectable"]]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("OptionPaper")
+metadata/navigation_scope = &"safe_room_sofa"
+
+[node name="Text" type="Label" parent="SofaOptions/Choices/Medical"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_right = -40.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.231373, 0.192157, 0.133333, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 24
+text = "上药"
+vertical_alignment = 1
+
+[node name="ScarDetail" type="Panel" parent="SofaOptions/Choices" groups=["selectable"]]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("OptionPaper")
+metadata/navigation_scope = &"safe_room_sofa"
+
+[node name="Text" type="Label" parent="SofaOptions/Choices/ScarDetail"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_right = -40.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.231373, 0.192157, 0.133333, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 24
+text = "看斑的旧伤"
+vertical_alignment = 1
+
+[node name="PageNav" type="Control" parent="SofaOptions"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("7_options_nav")
+selectable_root = NodePath("../Choices")
+external_input = true
+navigation_scope = &"safe_room_sofa"

@@ -3,7 +3,7 @@ extends Control
 signal session_entered(session: int)
 signal exit_line_finished(session: int, completed: bool)
 const Interaction = preload("res://scripts/interactable.gd")
-const SEQUENCES: Dictionary = {&"sofa": ["T176", "T177"], &"exit": ["T193"],
+const SEQUENCES: Dictionary = {&"detail": ["T190"], &"sofa": ["T176", "T177"], &"exit": ["T193"],
 	&"trust": ["T178", "T179", "T180", "T181", "T182", "T183", "T184", "T185", "T186", "T187", "T188", "T189"]}
 const TRUST_IDS: Array[String] = ["T178", "T179", "T180", "T181", "T182", "T183", "T184", "T185", "T186", "T187", "T188", "T189"]
 const ALLOWED_IDS: Array[String] = ["T176", "T177", "T190", "T193", "T178", "T179", "T180", "T181", "T182", "T183", "T184", "T185", "T186", "T187", "T188", "T189"]
@@ -20,6 +20,12 @@ var _expected: Array = []
 var _focus_target: String = "Sofa"
 var _entered_state: int = -1
 var _reading_focus: bool = false
+var options_open: bool = false
+var menu_run: int = -1
+var menu_token: int = 0
+var _choice_callback: Callable
+@onready var options: Control = $SofaOptions
+@onready var options_nav: Control = $SofaOptions/PageNav
 @onready var grid: Control = $Grid
 @onready var visual: Control = $Illustration/DressingVisual
 @onready var medical: Control = $MedicalIllustration
@@ -30,6 +36,7 @@ func configure(director: Node, service: Node) -> void:
 	flow = director
 	player = flow.dialogue
 	exit_service = service
+	options_nav.set_process_input(false)
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/safe_room_grid.json"))
 	grid.configure(flow.map.get_grid_size(), data)
 	grid.resized.connect(_layout_targets)
@@ -53,6 +60,7 @@ func configure(director: Node, service: Node) -> void:
 func enter_session() -> void:
 	var fresh: bool = captured_run != GameState.run_id
 	if fresh:
+		close_sofa_options()
 		captured_run = GameState.run_id
 		busy = false
 		_kind = &""
@@ -63,6 +71,7 @@ func enter_session() -> void:
 		grid.select_cell(grid.initial_cell)
 		_entered_state = -1
 	if _entered_state != GameState.state:
+		close_sofa_options()
 		if GameState.state == GameState.State.S6:
 			exit_service.reset_session(captured_run)
 			grid.select_object("Door")
@@ -88,6 +97,8 @@ func _can_request() -> bool:
 	return _owns_session() and GameState.state in [GameState.State.S0, GameState.State.S1, GameState.State.S6] and grid.valid and is_visible_in_tree() and not busy and not player.is_playing() and not exit_service.pending and not exit_service.committed
 
 func request_object(id: String) -> bool:
+	if options_open:
+		return false
 	if id not in OBJECT_IDS or not _owns_session() or not grid.valid or not is_visible_in_tree():
 		return false
 	if id == "Door" and GameState.state == GameState.State.S0 and not GameState.event_done(&"E4"):
@@ -96,7 +107,6 @@ func request_object(id: String) -> bool:
 	if not _can_request():
 		return false
 	_focus_target = id
-	var item: Control = interaction(id)
 	match id:
 		"Speaker":
 			if GameState.state != GameState.State.S0:
@@ -111,13 +121,7 @@ func request_object(id: String) -> bool:
 				return false
 			if not GameState.event_done(&"E13"):
 				return request_room_sequence(&"trust", TRUST_IDS)
-			if not item.read:
-				return request_room_sequence(&"sofa", ["T176", "T177"])
-			if GameState.event_done(&"E12"):
-				return false
-			if not flow.finish_safehouse(&"E12", captured_run):
-				return false
-			return item.activate()
+			return open_sofa_options()
 		"Door":
 			if GameState.state == GameState.State.S1:
 				return flow.request_departure(captured_run)
@@ -135,7 +139,9 @@ func request_room_sequence(kind: StringName, ids: Array) -> bool:
 	if kind == &"exit":
 		if not _can_read_exit():
 			return false
-	elif GameState.state != GameState.State.S6 or not _can_request():
+	elif GameState.state != GameState.State.S6 or not _can_request() or options_open:
+		return false
+	if kind == &"detail" and not GameState.event_done(&"E13"):
 		return false
 	_kind = kind
 	_sequence_run = captured_run
@@ -171,7 +177,7 @@ func _on_sequence_finished(skipped: bool) -> void:
 			if not GameState.event_done(&"E13"):
 				flow.finish_safehouse(&"E13", captured_run)
 			flow.main.show_page(&"ScenePage")
-	elif complete and not exit_read:
+	elif complete and _kind == &"sofa":
 		interaction("Sofa").complete_reading()
 	_clear_reading()
 	if exit_read:
@@ -188,6 +194,8 @@ func _clear_reading() -> void:
 
 ## flow先路由网格，避免同一鼠标点击既选格又推进正文。
 func blocks_object_input(event: InputEvent) -> bool:
+	if options_open:
+		return _route_options_input(event)
 	if medical.is_visible_in_tree():
 		if event is InputEventMouse and flow.main._page_switch_bar.get_global_rect().has_point(event.position):
 			return false
@@ -241,8 +249,9 @@ func _on_medical_closed() -> void:
 
 func _restore_focus() -> void:
 	if not is_visible_in_tree():
+		close_sofa_options()
 		medical.dismiss()
-	if _can_request() and not _reading_focus:
+	if _can_request() and not _reading_focus and not options_open:
 		grid.grab_focus()
 
 func _on_exit_saved(_session: int, _receipt: Dictionary) -> void:
@@ -250,11 +259,13 @@ func _on_exit_saved(_session: int, _receipt: Dictionary) -> void:
 	_refresh_status()
 
 func _refresh_status() -> void:
+	if options_open and (exit_service.pending or exit_service.committed):
+		close_sofa_options()
 	if not grid.valid:
 		$Status/ProgressNotice.text = grid.last_error
 	$Status/SaveStatus.text = "自动保存失败，正在重试。" if exit_service.pending and exit_service.last_error != OK else ""
 	$Status/SaveStatus.visible = not $Status/SaveStatus.text.is_empty()
-	grid.input_enabled = not exit_service.committed and not exit_service.pending and not busy
+	grid.input_enabled = not exit_service.committed and not exit_service.pending and not busy and not options_open
 
 func _layout_targets() -> void:
 	if not is_node_ready() or not grid.valid:
@@ -269,3 +280,97 @@ func _can_read_exit() -> bool:
 
 
 
+
+func open_sofa_options() -> bool:
+	if options_open or not _can_request() or GameState.state != GameState.State.S6 or not GameState.event_done(&"E13"):
+		return false
+	menu_token += 1
+	menu_run = captured_run
+	options_open = true
+	_reading_focus = false
+	options.show()
+	# 隐藏的Container尚未排序；对外接受点击前同步生成真实候选矩形。
+	$SofaOptions/Choices.notification(Container.NOTIFICATION_SORT_CHILDREN)
+	options_nav.set_process_input(false)
+	options_nav.refresh_candidates()
+	var med: Control = $SofaOptions/Choices/Medical
+	var detail: Control = $SofaOptions/Choices/ScarDetail
+	options_nav.mark_used(med, GameState.event_done(&"E12"))
+	options_nav.mark_used(detail, false)
+	options_nav.select_candidate(detail if GameState.event_done(&"E12") else med)
+	_choice_callback = _on_sofa_choice.bind(menu_run, menu_token)
+	options_nav.confirmed.connect(_choice_callback)
+	grid.release_focus()
+	_refresh_status()
+	return true
+
+func close_sofa_options() -> void:
+	var was_open: bool = options_open
+	menu_token += 1
+	menu_run = -1
+	options_open = false
+	if is_instance_valid(options_nav) and _choice_callback.is_valid() and options_nav.confirmed.is_connected(_choice_callback):
+		options_nav.confirmed.disconnect(_choice_callback)
+	_choice_callback = Callable()
+	if is_instance_valid(options):
+		options.hide()
+	if is_instance_valid(exit_service) and is_instance_valid(grid):
+		grid.input_enabled = not exit_service.pending and not exit_service.committed and not busy
+	if was_open and is_visible_in_tree():
+		_restore_focus.call_deferred()
+
+func _on_sofa_choice(node: Control, session: int, token: int) -> void:
+	choose_sofa_option(StringName(node.name), session, token)
+
+func choose_sofa_option(id: StringName, session: int, token: int) -> bool:
+	# 先检查旧请求，绝不能由它关闭新一轮菜单。
+	if not options_open or session != menu_run or token != menu_token or session != captured_run:
+		return false
+	if not _can_request() or GameState.state != GameState.State.S6 or not GameState.event_done(&"E13") or id not in [&"Medical", &"ScarDetail"]:
+		return false
+	if id == &"Medical" and GameState.event_done(&"E12"):
+		return false
+	close_sofa_options()
+	if id == &"ScarDetail":
+		return request_room_sequence(&"detail", ["T190"])
+	return _choose_medical()
+
+func _choose_medical() -> bool:
+	if GameState.event_done(&"E12"):
+		return false
+	var item: Control = interaction("Sofa")
+	if not item.read:
+		return request_room_sequence(&"sofa", ["T176", "T177"])
+	if not item.can_confirm() or not flow.finish_safehouse(&"E12", captured_run):
+		return false
+	return item.activate()
+
+func _route_options_input(event: InputEvent) -> bool:
+	var page_event: bool = event is InputEventKey and event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN]
+	page_event = page_event or (event is InputEventMouseButton and flow.main._page_switch_bar.get_global_rect().has_point(event.position))
+	if page_event:
+		close_sofa_options()
+		return false
+	# 以进入路由时的所有权为准，关闭菜单后也不穿透至格子/新台词。
+	get_viewport().set_input_as_handled()
+	if not _can_request() or menu_run != captured_run or GameState.state != GameState.State.S6 or not GameState.event_done(&"E13"):
+		close_sofa_options()
+		return true
+	if event is InputEventKey and event.keycode == KEY_ESCAPE and event.pressed and not event.echo:
+		close_sofa_options()
+		return true
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		var local_position: Vector2 = $SofaOptions/Choices.get_global_transform_with_canvas().affine_inverse() * event.position
+		if not Rect2(Vector2.ZERO, $SofaOptions/Choices.size).has_point(local_position):
+			close_sofa_options()
+			return true
+	options_nav.route_external_input(event)
+	return true
+
+func sync_restored_sofa_progress(session: int) -> bool:
+	if session != captured_run or not _owns_session() or GameState.state != GameState.State.S6:
+		return false
+	interaction("Sofa").set_read(GameState.event_done(&"E12"))
+	_refresh_status()
+	_restore_focus.call_deferred()
+	return true

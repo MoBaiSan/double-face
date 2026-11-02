@@ -14,6 +14,8 @@ const ACTION_DIRECTIONS: Dictionary = {
 }
 
 @export var selectable_root: NodePath = NodePath("..")
+@export var external_input: bool = false
+@export var navigation_scope: StringName = &""
 
 @onready var _scope: Node = get_node_or_null(selectable_root)
 
@@ -74,6 +76,8 @@ func _on_candidate_visibility_changed(_node: Node) -> void:
 
 ## 仅自身在可见树且启用输入时处理并吞键；隐藏或停用时原样返回。
 func _input(event: InputEvent) -> void:
+	if external_input:
+		return
 	if reading or not is_visible_in_tree() or not is_processing_input():
 		return
 	_sync_candidates()
@@ -149,13 +153,15 @@ func confirm_selection() -> void:
 	_sync_candidates()
 	if _selected == null or reading:
 		return
-	var interaction = get_interactable(_selected)
+	# 确认回调可能隐藏菜单并清空_selected；保留本次信号的实际候选。
+	var selected: Control = _selected
+	var interaction = get_interactable(selected)
 	if interaction == null:
 		return
 	if interaction.progression and not interaction.read:
-		reading_requested.emit(_selected)
+		reading_requested.emit(selected)
 	elif interaction.activate():
-		confirmed.emit(_selected)
+		confirmed.emit(selected)
 
 
 ## 同步共用组件的已读状态，不维护第二份已读字典。
@@ -173,6 +179,8 @@ func _is_eligible(node: Control) -> bool:
 	if not is_instance_valid(_scope) or not _scope.is_ancestor_of(node):
 		return false
 	if not node.is_visible_in_tree():
+		return false
+	if StringName(node.get_meta("navigation_scope", &"")) != navigation_scope:
 		return false
 	return not (node is BaseButton and (node as BaseButton).disabled)
 
@@ -285,10 +293,14 @@ func _select(node: Control) -> void:
 
 
 func _on_hover(node: Control) -> void:
+	if external_input:
+		return
 	_select(node)
 
 
 func _on_candidate_input(event: InputEvent, node: Control) -> void:
+	if external_input:
+		return
 	_sync_candidates()
 	if not _candidates.has(node):
 		return
@@ -325,3 +337,37 @@ func _refresh_progress_notice() -> void:
 			pending = pending or (interaction.progression and not interaction.read)
 	_progress_notice.text = SelectionOutline.text_for("progress_pending") if pending else ""
 	_progress_notice.visible = pending
+
+## 外部模式只有房间调用；不再经 _input/gui_input 接收同一事件。
+func select_candidate(node: Control) -> bool:
+	_sync_candidates()
+	if not _candidates.has(node):
+		return false
+	_select(node)
+	return true
+
+func route_external_input(event: InputEvent) -> bool:
+	if not external_input or not is_visible_in_tree() or reading:
+		return false
+	_sync_candidates()
+	if _candidates.is_empty():
+		return false
+	if event is InputEventKey:
+		if not event.pressed or event.echo:
+			return true
+		if event.is_action_pressed(&"ui_up"):
+			move_selection(Vector2.UP)
+		elif event.is_action_pressed(&"ui_down"):
+			move_selection(Vector2.DOWN)
+		elif event.is_action_pressed(&"ui_accept"):
+			confirm_selection()
+		return true
+	if event is InputEventMouse:
+		for node: Control in _candidates:
+			var local_position: Vector2 = node.get_global_transform_with_canvas().affine_inverse() * event.position
+			if Rect2(Vector2.ZERO, node.size).has_point(local_position):
+				select_candidate(node)
+				if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+					confirm_selection()
+				return true
+	return false

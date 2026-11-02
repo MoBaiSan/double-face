@@ -68,12 +68,18 @@ func begin_medical() -> void:
 	read_trust()
 	lines.clear()
 	click("Sofa")
+	choose_option("Medical")
 
 func complete_sofa() -> void:
 	read_trust()
 	click("Sofa")
+	choose_option("Medical")
 	finish_reading()
 	click("Sofa")
+	choose_option("Medical")
+
+func choose_option(id: String) -> void:
+	c.click(room.get_node("SofaOptions/Choices/" + id))
 
 func focus_object(id: String) -> void:
 	room.grid.select_object(id)
